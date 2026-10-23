@@ -1,0 +1,19 @@
+# Local build output
+/dist/
+*.zip
+
+# Node tooling, if added later
+/node_modules/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local secrets and exported/private data
+.env
+.env.*
+*.log
+*.db
+*.sqlite
