@@ -102,7 +102,7 @@ Examples (set as the value of `flags.external-reaction.optional.NAME.activation`
 | `friendly` | Reactor and action `target` have a friendly disposition relationship |
 | `enemy` | Reactor and action `target` are enemies |
 | `friendly && CanSee` | Target is friendly and reactor can see the target |
-| `enemy || !CanSee` | Target is an enemy, or the reactor cannot see the target |
+| `enemy` || !CanSee` | Target is an enemy, or the reactor cannot see the target |
 | `range <= 40` | Reactor and action target are 40 scene units or closer |
 | `range == 40` | Distance to the action target is exactly 40 scene units |
 | `friendly && range <= 40 && CanSee` | Target is friendly, within range, and visible |
