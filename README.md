@@ -1,27 +1,45 @@
 # External Reaction
 
-External Reaction extends Midi-QoL-style optional roll bonuses so a creature on the active scene can react to another creature's attack, saving throw, ability check, skill check, damage roll, or incoming attack's AC check.
+External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. It also supports triggered D&D 5e Activities and External Reaction Item Macros.
 
-The module is designed for **Foundry Virtual Tabletop V14**, **D&D 5e 6.0.6+**, **Midi-QoL**, and **socketlib**.
+**Current version: 0.10.8**  
+**Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
 
-## Current version
+## Highlights in 0.10.0–0.10.8
 
-The source in this repository starts from **v0.9.5**, which includes optional attack/save/check/skill/damage/AC reactions, Midi-QoL activation conditions, actor/item helpers, triggered D&D 5e Activities, spell-slot payment with level selection (including Pact Magic), resource-count protection, and Midi-QoL-level-aware logging.
+- Trigger reactions from workflow-event activation conditions such as `cast`, `attack`, save/check/skill events, and related activity flags.
+- Invoke an Item Macro at a selected Midi-QoL workflow pass, with structured spell-slot and ItemUses/ActivityUses resource receipts.
+- Execute accepted Item Macros on the reactor's owning client's screen: the owning player's client for a player-owned reactor, or the GM client when the GM owns the reactor or the GM fallback is selected.
+- Return `"cancel"`, `"continue"`, an Activity reference, or a supported structured result to control the original workflow.
+- Run macro source in an isolated async scope so local declarations such as `const externalReaction = data.externalReaction ?? {};` do not collide with the module's Midi-compatible context bindings.
+- Guard optional Item Macro flag lookup when Foundry V14 does not register the legacy `itemacro` scope; support DAE/DIME and the supported legacy macro storage.
+
+## Item Macro setup and execution context
+
+Keep the Item Macro command stored on the source Item through your supported DAE/DIME or legacy Item Macro mechanism. **Do not also assign the same command to a Midi-QoL On Use Macro stage** when External Reaction owns its invocation; otherwise it can run twice or recurse when it launches an Activity from that Item.
+
+A bare `ItemMacro` trigger defaults to `postActiveEffects`. Specify another pass with `activity.trigger = "ItemMacro, postAttackRoll"` or set `activity.macroPass = postAttackRoll`.
+
+The Item Macro executes on the selected reactor recipient's client, and the original workflow waits for its returned value. Document references in the context are re-resolved on that client. The `workflow` value is a **serializable snapshot**, not a live Midi-QoL Workflow instance, so code should not expect live Workflow methods or mutate the initiating workflow object directly. Actor APIs such as `actor.rollAbilityCheck()` run on the reactor's client and can show roll UI there.
+
+Cancelling a workflow is not a rollback: earlier rolls, spent resources, or applied effects are not automatically undone. In particular, a rules-accurate 2014 Counterspell automation still needs a separately tested solution for the interrupted caster's spell-slot consumption when cancelling at `preItemRoll`.
 
 ## Documentation
 
-- [Technical reference](docs/REFERENCE.md) — supported flags, selectors, activation expressions, resource counts, spell slots, and triggered Activities.
-- [Testing checklist](TESTING.md) — regression scenarios for the behaviors that need to remain correct.
-- [Changelog](CHANGELOG.md) — release history and future changes.
-- [Maintainer contribution notes](CONTRIBUTING.md) — versioning, safe testing, and release workflow.
+- [Technical reference](docs/REFERENCE.md) — supported flags, selectors, activation expressions, Item Macro execution, resource counts, spell slots, and triggered Activities.
+- [Flag/value examples](docs/FLAG-VALUE-EXAMPLES.md) — copyable Active Effect flag examples.
+- [Regression test plan](TESTING.md) — release verification and regression scenarios.
+- [Changelog](CHANGELOG.md) — notable changes by version.
+- [Maintainer contribution notes](CONTRIBUTING.md) — versioning, validation, and release workflow.
 
 ## Installation in Foundry
 
-After the repository is published, install the module using its stable manifest URL:
+Install using the module's stable manifest URL:
 
 `https://github.com/pefcs/external-reaction/releases/latest/download/module.json`
 
-The module manifest points to the ZIP asset attached to the latest GitHub Release, so normal module updates can use Foundry's update checker.
+The repository's GitHub Actions workflow validates the manifest and JavaScript, builds `module.zip`, and publishes a release when the manifest version changes on `main`. You can also download the installable ZIP from the [Releases page](https://github.com/pefcs/external-reaction/releases).
 
-You can also download `module.zip` from the [Releases](https://github.com/pefcs/external-reaction/releases) page and install it manually.
+## Compatibility and testing
 
+The manifest declares Foundry V14 and D&D 5e 6.0.6 as minimum versions. External Reaction integrates with Midi-QoL workflow methods that may change between versions. Test upgrades and new Item Macro passes in a copy of your world before using them in a live campaign. The 0.10.8 reactor-client Counterspell flow has been tested in-world for player-owned and GM-owned reactors, automatic countering when the Counterspell slot level is high enough, and success/failure handling for the ability check when the spell is higher-level.

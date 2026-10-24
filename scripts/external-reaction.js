@@ -10,6 +10,11 @@ const patchedSaveWorkflows = new WeakSet();
 const processedExternalCheckRolls = new WeakSet();
 const patchedDamageWorkflows = new WeakSet();
 const processedACWorkflows = new WeakSet();
+// Pending, one-shot contexts that suppress recursive ItemMacro calls when an
+// Activity returned by that same ItemMacro is used as an External Reaction.
+const externalTriggeredActivityContexts = [];
+// One-time authorizations created only after the reactor accepts an ItemMacro reaction.
+const authorizedExternalItemMacroRequests = new Map();
 
 /* ------------------------------------------------------------------------- *
  * Logging
@@ -338,9 +343,22 @@ async function chooseAndSpendExternalSpellSlot(actorUuid, minimumLevel) {
     return false;
   }
   const path = `system.spells.${current.key}.value`;
-  await actor.update({ [path]: Math.max(0, current.remaining - 1) });
+  const before = current.remaining;
+  const after = Math.max(0, before - 1);
+  await actor.update({ [path]: after });
   log(`Spent ${current.kind === "pact" ? "Pact Magic " : ""}slot level ${current.level} for External Reaction on ${actor.name}.`);
-  return true;
+  return {
+    type: "spellSlot",
+    actorUuid: actor.uuid,
+    pool: current.kind === "pact" ? "pact" : "spell",
+    slotKey: current.key,
+    level: current.level,
+    amount: 1,
+    consumed: true,
+    before,
+    after,
+    resourcePath: path
+  };
 }
 
 function getCountValue(actor, value, flagKey) {
@@ -441,6 +459,40 @@ function countAvailable(actor, data, flagKey, { ignorePaidSpellSlot = false } = 
     : getCountValue(actor, value, flagKey) > 0;
   return available(liveData.count) && available(liveData.countAlt);
 }
+async function consumeCountWithResourceReceipt(actor, flagKey, data) {
+  const liveData = getLiveCountData(actor, data, flagKey) ?? data ?? {};
+  const candidates = [];
+  for (const property of ["count", "countAlt"]) {
+    const value = String(liveData[property] ?? "");
+    if (value.startsWith("ItemUses.")) {
+      const item = getItemForCount(actor, value);
+      if (item) candidates.push({ kind: "itemUsage", count: value, item, before: getCountValue(actor, value, flagKey), beforeSpent: Number(item.system?.uses?.spent ?? 0), resourcePath: "system.uses.spent" });
+    } else if (value.startsWith("ActivityUses.")) {
+      const activity = getActivityForCount(actor, value);
+      if (activity) candidates.push({ kind: "itemUsage", count: value, item: activity.item ?? null, activity, before: getCountValue(actor, value, flagKey), beforeSpent: Number(activity.uses?.spent ?? 0), resourcePath: "system.activities.uses.spent" });
+    }
+  }
+  await consumeCount(actor, flagKey, data);
+  const resources = [];
+  const seen = new Set();
+  for (const entry of candidates) {
+    const afterSpent = Number((entry.activity?.uses ?? entry.item?.system?.uses)?.spent ?? entry.beforeSpent);
+    const after = getCountValue(actor, entry.count, flagKey);
+    const amount = Math.max(0, afterSpent - entry.beforeSpent);
+    if (!amount) continue;
+    const identity = `${entry.item?.uuid ?? ""}:${entry.activity?.uuid ?? ""}:${entry.resourcePath}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    resources.push({
+      type: "itemUsage", actorUuid: actor.uuid, itemUuid: entry.item?.uuid ?? null,
+      activityUuid: entry.activity?.uuid ?? null, amount, consumed: true,
+      before: entry.before, after, beforeSpent: entry.beforeSpent, afterSpent,
+      resourcePath: entry.resourcePath, count: entry.count
+    });
+  }
+  return { resources };
+}
+
 async function consumeCount(actor, flagKey, data) {
   const effect = findGrantingEffect(actor, flagKey);
   const prefix = `${FLAG_ROOT}.${flagKey}`;
@@ -766,6 +818,87 @@ function normalizeActorIdentityComparisons(expression) {
  * checks/skills, and the affected target for damage. This explicit split avoids ambiguous
  * target semantics in third-party reactions.
  */
+function getExternalWorkflowEventFlags(workflow, context = {}) {
+  const item = workflow?.item ?? workflow?.activity?.item ?? context.item ?? null;
+  const activity = workflow?.activity ?? context.activity ?? null;
+  const actionKind = String(context.actionKind ?? "").toLowerCase();
+  const activityType = String(activity?.type ?? activity?.system?.type ?? "").toLowerCase();
+  const actionType = String(context.actionType ?? activity?.actionType ?? activity?.system?.actionType ?? item?.system?.actionType ?? "").toLowerCase();
+  const attackTypes = new Set(["mwak", "rwak", "msak", "rsak"]);
+  const isAttack = actionKind === "attack" || activityType === "attack" || attackTypes.has(actionType);
+  const isCast = context.cast === true || actionKind === "cast" || item?.type === "spell" || activityType === "cast";
+  const isSave = context.save === true || actionKind === "save" || activityType === "save" || actionType === "save";
+  const isCheck = context.check === true || actionKind === "check" || actionKind === "skill" || activityType === "check" || actionType === "check";
+  const isSkill = context.skill === true || actionKind === "skill" || Boolean(activity?.check?.skills?.length || workflow?.check?.skill || workflow?.skill);
+  const damageActivity = activity?.damage;
+  const isDamage = context.damage === true || actionKind === "damage" || (Array.isArray(damageActivity?.parts) && damageActivity.parts.length > 0);
+  const isHeal = context.heal === true || actionKind === "heal" || activityType === "heal" || actionType === "heal";
+  const isConcentration = context.concentration === true || actionKind === "concentration";
+  const isDeathSave = context.deathSave === true || actionKind === "deathSave" || actionKind === "deathsave";
+  const isInitiative = context.initiative === true || actionKind === "initiative";
+  const isTool = context.tool === true || (isCheck && Boolean(activity?.check?.tools?.length || workflow?.tool));
+  const isUtility = context.utility === true || activityType === "utility" || actionType === "util";
+  const isItemUse = context.itemUse === true || actionKind === "itemUse";
+  const inferred = {
+    cast: !!isCast,
+    attack: !!isAttack,
+    mwak: actionType === "mwak",
+    rwak: actionType === "rwak",
+    msak: actionType === "msak",
+    rsak: actionType === "rsak",
+    save: !!isSave,
+    check: !!isCheck,
+    skill: !!isSkill,
+    damage: !!isDamage,
+    heal: !!isHeal,
+    concentration: !!isConcentration,
+    deathSave: !!isDeathSave,
+    initiative: !!isInitiative,
+    tool: !!isTool,
+    utility: !!isUtility,
+    itemUse: !!isItemUse
+  };
+  return { ...inferred, ...(context.eventFlags && typeof context.eventFlags === "object" ? context.eventFlags : {}) };
+}
+
+// Compared with lower-case pass names in the On Use dispatcher.
+const EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES = new Set(["precheckhits", "predamageroll", "presave"]);
+
+const EXTERNAL_ITEM_MACRO_PASSES = new Map([
+  // The dispatcher is installed at preItemRoll; earlier passes cannot be guaranteed.
+  ...["preItemRoll", "preAttackRoll", "preCheckHits", "postAttackRoll", "preDamageRoll", "postDamageRoll",
+    "preSave", "postSave", "preActiveEffects", "postActiveEffects"].map(pass => [pass.toLowerCase(), pass]),
+  // Later workflow-state passes are awaited by Midi-QoL's state transition loop.
+  ...["preWaitForAttackRoll", "postWaitForAttackRoll", "preAttackRollComplete", "postAttackRollComplete",
+    "preWaitForDamageRoll", "postWaitForDamageRoll", "preConfirmRoll", "postConfirmRoll",
+    "preRollConfirmed", "postRollConfirmed", "preDamageRollStarted", "postDamageRollStarted",
+    "preDamageRollComplete", "postDamageRollComplete", "preWaitForUtilityRoll", "postWaitForUtilityRoll",
+    "preUtilityRollComplete", "postUtilityRollComplete", "preWaitForSaves", "postWaitForSaves",
+    "preSavesComplete", "postSavesComplete", "preAllRollsComplete", "postAllRollsComplete",
+    "preApplyDynamicEffects", "postApplyDynamicEffects", "preCleanup", "postCleanup",
+    "preCompleted", "postCompleted", "preRollFinished", "postRollFinished"].map(pass => [pass.toLowerCase(), pass])
+]);
+
+function getExternalItemMacroPass(flagData) {
+  const rawTrigger = String(foundry.utils.getProperty(flagData, "activity.trigger") ?? "").trim();
+  const triggerParts = rawTrigger.split(",").map(part => part.trim()).filter(Boolean);
+  if (triggerParts[0]?.toLowerCase() !== "itemmacro") return null;
+
+  // Keep the trigger discriminator compatible with the original format, while also
+  // accepting Midi-style "ItemMacro, postAttackRoll" and a dedicated macroPass field.
+  const configuredPass = foundry.utils.getProperty(flagData, "activity.macroPass")
+    ?? foundry.utils.getProperty(flagData, "activity.pass")
+    ?? triggerParts[1]
+    ?? "postActiveEffects";
+  const passKey = String(configuredPass).trim().toLowerCase();
+  return EXTERNAL_ITEM_MACRO_PASSES.get(passKey) ?? null;
+}
+
+function isExternalItemMacroTrigger(flagData) {
+  const rawTrigger = String(foundry.utils.getProperty(flagData, "activity.trigger") ?? "").trim();
+  return rawTrigger.split(",")[0]?.trim().toLowerCase() === "itemmacro";
+}
+
 async function evaluateExternalActivation(reactor, workflow, referenceToken, context = {}, midi = game.modules.get("midi-qol")?.api) {
   const rawExpression = reactor?.flagData?.activation;
   if (rawExpression === undefined || rawExpression === null || rawExpression === "") return true;
@@ -864,8 +997,7 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
     return false;
   }
 
-  const actionItem = workflow?.item ?? workflow?.activity?.item ?? context?.item ?? null;
-  const actionActivity = workflow?.activity ?? context?.activity ?? null;
+  const actionItem = workflow?.item ?? workflow?.activity?.item ?? context?.item ?? null;  const actionActivity = workflow?.activity ?? context?.activity ?? null;
   let itemData;
   try {
     const itemRollData = actionItem?.getRollData?.();
@@ -1009,7 +1141,8 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
   conditionData.enemy = dispositionMatches(reactor, targetToken, "enemy");
   conditionData.actorFriendly = dispositionMatches(reactor, actionActorToken, "friendly");
   conditionData.actorEnemy = dispositionMatches(reactor, actionActorToken, "enemy");
-  conditionData.actionType = context.actionType ?? actionActivity?.actionType ?? actionItem?.system?.actionType;
+  conditionData.actionType = context.actionType ?? actionActivity?.actionType ?? actionActivity?.system?.actionType ?? actionItem?.system?.actionType;
+  Object.assign(conditionData, getExternalWorkflowEventFlags(workflow, { ...context, actionType: conditionData.actionType, activity: actionActivity, item: actionItem }));
   if (conditionData.actor && typeof conditionData.actor === "object") {
     conditionData.actor.isCombatTurn = game.combat?.combatant?.tokenId === (actionActorToken?.id ?? actionActorToken?.document?.id);
   }
@@ -1397,7 +1530,78 @@ async function chooseExternalActivityTargets(activity, candidates, maxTargets) {
   }
 }
 
-async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger }) {
+function snapshotExternalActivityTargets(user = game.user) {
+  const seen = new Set();
+  return [...(user?.targets ?? [])].map(target => {
+    const id = target?.id ?? target?.document?.id;
+    if (!id || seen.has(id)) return null;
+    seen.add(id);
+    return canvas?.tokens?.get?.(id) ?? normalizeToken(target);
+  }).filter(token => token && (token.id ?? token.document?.id));
+}
+
+function restoreExternalActivityTargets(targets, user = game.user) {
+  if (!user) return;
+  // Clear only this user's targets; leave every other user's target state alone.
+  for (const current of [...(user.targets ?? [])]) {
+    const id = current?.id ?? current?.document?.id;
+    const token = (id && canvas?.tokens?.get?.(id)) ?? normalizeToken(current);
+    token?.setTarget?.(false, { user, releaseOthers: false });
+  }
+  for (const [index, token] of targets.entries()) {
+    token?.setTarget?.(true, { user, releaseOthers: index === 0 });
+  }
+}
+
+function markExternalTriggeredActivityWorkflow(workflow) {
+  if (!workflow) return;
+  const actorUuid = workflow.actor?.uuid ?? workflow.item?.actor?.uuid;
+  const itemUuid = workflow.item?.uuid ?? workflow.activity?.item?.uuid;
+  const index = externalTriggeredActivityContexts.findIndex(context =>
+    !context.consumed && context.actorUuid === actorUuid && context.activityItemUuid === itemUuid
+  );
+  if (index < 0) return;
+  const [context] = externalTriggeredActivityContexts.splice(index, 1);
+  context.consumed = true;
+  if (context.suppressItemMacroUuid) {
+    Object.defineProperty(workflow, "__externalReactionSuppressItemMacroUuid", {
+      configurable: true, enumerable: false, writable: true,
+      value: context.suppressItemMacroUuid
+    });
+    debug("Suppressing recursive ItemMacro call on an Activity returned by that ItemMacro.", {
+      actorUuid, itemUuid, macroItemUuid: context.suppressItemMacroUuid
+    });
+  }
+}
+
+async function useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid = null, targetsToUse = null) {
+  const user = game.user;
+  const originalTargets = snapshotExternalActivityTargets(user);
+  const suppressSameItemMacro = !!suppressItemMacroUuid && activity?.item?.uuid === suppressItemMacroUuid;
+  const context = suppressSameItemMacro ? {
+    actorUuid: actor.uuid,
+    activityItemUuid: activity.item.uuid,
+    suppressItemMacroUuid
+  } : null;
+  if (context) externalTriggeredActivityContexts.push(context);
+  try {
+    if (Array.isArray(targetsToUse)) {
+      for (const [index, token] of targetsToUse.entries()) {
+        token.setTarget(true, { user, releaseOthers: index === 0 });
+      }
+    }
+    await activity.use();
+    return true;
+  } finally {
+    if (context) {
+      const index = externalTriggeredActivityContexts.indexOf(context);
+      if (index >= 0) externalTriggeredActivityContexts.splice(index, 1);
+    }
+    restoreExternalActivityTargets(originalTargets, user);
+  }
+}
+
+async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid = null }) {
   const actor = await fromUuid(actorUuid);
   if (!actor?.items) throw new Error(`Could not resolve the reactor Actor: ${actorUuid}`);
   const reference = String(trigger ?? "").trim();
@@ -1432,7 +1636,7 @@ async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger }) {
   // Area activities should follow the normal Activity UI flow (template placement,
   // activation dialog, scaling, consumption, and subsequent actions remain system-owned).
   if (templateType && templateType !== "none") {
-    await activity.use();
+    await useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid);
     return true;
   }
 
@@ -1464,10 +1668,7 @@ async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger }) {
   if (!targetPlaceables.length) {
     throw new Error("Could not resolve any selected targets to Foundry Token placeables.");
   }
-  for (const [index, token] of targetPlaceables.entries()) {
-    token.setTarget(true, { releaseOthers: index === 0 });
-  }
-  await activity.use();
+  await useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid, targetPlaceables);
   return true;
 }
 
@@ -1516,16 +1717,25 @@ async function flushExternalTriggeredActivities(workflow, socket) {
  * Reaction prompts and saving-throw / attack roll integration
  * ------------------------------------------------------------------------- */
 
-async function promptForReaction(socket, midi, reactor, workflow, roll, value, flagData, title) {
-  let rollHTML = await midi.midiRenderRoll(roll);
+async function promptForReaction(socket, midi, reactor, workflow, roll, value, flagData, title, context = {}) {
+  const initiatingActor = context.actionActor ?? workflow?.actor;
+  const initiatingItem = context.item ?? workflow?.item ?? workflow?.activity?.item;
+  let rollHTML = roll
+    ? await midi.midiRenderRoll(roll)
+    : `<div class="external-reaction-trigger-preview"><strong>${escapeExternalActivityHTML(initiatingActor?.name ?? "A creature")}</strong> is using <strong>${escapeExternalActivityHTML(initiatingItem?.name ?? "an item")}</strong>.</div>`;
   const rollMode = resolveExternalRollMode(flagData, roll);
   if (rollMode === "blindroll" && !reactor.recipient?.isGM) rollHTML = "Hidden Roll";
   const liveCountData = getLiveCountData(reactor.actor, flagData, reactor.flagKey) ?? flagData;
   const spellSlotMinimum = getSpellSlotMinimum(liveCountData);
   const response = await socket.executeAsUser("promptReaction", reactor.recipient.id, {
-    actorName: workflow.actor?.name ?? "Unknown actor",
-    itemName: workflow.item?.name ?? workflow.activity?.item?.name ?? "Unknown action",
+    actorName: initiatingActor?.name ?? "Unknown actor",
+    itemName: initiatingItem?.name ?? "Unknown action",
     actorUuid: reactor.actor?.uuid,
+    flagKey: reactor.flagKey,
+    authorizeItemMacro: isExternalItemMacroTrigger(flagData),
+    macroPass: context.macroPass ?? getExternalItemMacroPass(flagData) ?? "",
+    requesterUserId: game.user.id,
+    initiatingActorUuid: initiatingActor?.uuid ?? workflow?.actor?.uuid ?? null,
     spellSlotMinimum,
     title,
     value,
@@ -1537,13 +1747,25 @@ async function promptForReaction(socket, midi, reactor, workflow, roll, value, f
   const accepted = response === true || response?.accepted === true;
   if (!accepted) return false;
   const trigger = foundry.utils.getProperty(flagData, "activity.trigger");
-  if (trigger !== undefined && trigger !== null && String(trigger).trim()) {
+  if (trigger !== undefined && trigger !== null && String(trigger).trim() && !isExternalItemMacroTrigger(flagData)) {
     // Do not show target selection while later targets / phases still have optional
     // reactions to resolve. The owning workflow flushes this queue after its full batch.
     queueExternalTriggeredActivity(socket, reactor, workflow, trigger);
   }
-  // Return payment metadata so the post-prompt eligibility check doesn't reject the
-  // reaction merely because its selected spell slot has now correctly been expended.
+  // Return payment/resource metadata so the next stage knows exactly what was spent.
+  if (response?.accepted === true || response?.resource || response?.resources) {
+    const resources = Array.isArray(response.resources) ? response.resources : response.resource ? [response.resource] : [];
+    return {
+      accepted: true,
+      spellSlotPaid: response.spellSlotPaid === true,
+      resource: resources[0] ?? null,
+      resources,
+      macroRequestToken: response.macroRequestToken ?? null
+    };
+  }
+  if (response?.accepted === true) {
+    return { accepted: true, macroRequestToken: response.macroRequestToken ?? null };
+  }
   return response?.spellSlotPaid ? { accepted: true, spellSlotPaid: true } : true;
 }
 
@@ -1701,6 +1923,7 @@ async function processSaveReactionPhase(workflow, target, rolls, context, phase,
   for (const reactor of reactors.values()) {
     await withExternalCountLock(reactor.actor, reactor.flagKey, async () => {
       const { actor, flagKey, flagData, usesCharacterReaction, recipient } = reactor;
+      if (isExternalItemMacroTrigger(flagData)) return;
       if (!countAvailable(actor, flagData, flagKey)) return;
       if (usesCharacterReaction && midi.hasUsedReaction?.(actor)) return;
       let rawValue;
@@ -1773,8 +1996,7 @@ async function modifyAttackRoll(workflow, value, reactor, flagKey, flagPath) {
         if (origin instanceof Item) macroItem = origin;
         else if (origin instanceof ActiveEffect && origin.parent instanceof Item) macroItem = origin.parent;
         else if (origin?.item instanceof Item) macroItem = origin.item;
-      } catch (_) { /* Fall back to the attack item if the effect origin cannot be resolved. */ }
-    }
+      } catch (_) { /* Fall back to the attack item if the effect origin cannot be resolved. */ }    }
     const result = await workflow.callMacro(macroItem, macroSpec, macroData, { roll, actor: reactor.actor, bonus: isMacro ? undefined : text });
     if (result instanceof Roll) { newRoll = result; applied = true; }
     else if (typeof result === "number" || typeof result === "string") {
@@ -1887,16 +2109,80 @@ Hooks.once("ready", () => {
     });
     return result === true;
   });
-  socket.register("triggerExternalActivity", async ({ actorUuid, tokenUuid, trigger }) => {
+  socket.register("triggerExternalActivity", async ({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid }) => {
     try {
-      return await runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger });
+      return await runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid });
     } catch (err) {
       error(`Triggered Activity '${String(trigger ?? "")}' failed.`, err);
       ui.notifications?.error(`External Reaction: failed to use triggered Activity '${String(trigger ?? "")}'. Check the console for details.`);
       return false;
     }
   });
-  socket.register("promptReaction", async ({ actorName, itemName, actorUuid, spellSlotMinimum, title, value, label, rollHTML, timeout = 30 }) => {
+  // Run Item Macro count consumption on the reactor's client so ownership permissions
+  // allow the update and the macro receives the exact resource receipt.
+  socket.register("consumeExternalItemMacroCount", async function (request = {}) {
+    const senderId = this?.socketdata?.userId;
+    try {
+      await validateExternalReactionSocketRequester(request, senderId);
+      const authorization = findExternalItemMacroAuthorization({
+        ...request, authenticatedRequesterUserId: senderId, requireCountConsumed: false
+      });
+      if (!authorization || authorization.countConsumed) {
+        return { ok: false, reason: "invalid-or-replayed-authorization" };
+      }
+      const actor = await fromUuid(request.actorUuid);
+      if (!actor) return { ok: false, reason: "actor-not-found" };
+      if (!game.user.isGM && !actor.isOwner) return { ok: false, reason: "reactor-not-owned-by-recipient" };
+      const options = collectActorExternalOptions(actor);
+      const flagData = options?.[request.flagKey];
+      if (!flagData || !isExternalItemMacroTrigger(flagData)
+          || getExternalItemMacroPass(flagData)?.toLowerCase() !== String(request.macroPass ?? "").toLowerCase()
+          || !countAvailable(actor, flagData, request.flagKey, { ignorePaidSpellSlot: true })) {
+        return { ok: false, reason: "count-no-longer-available" };
+      }
+      const result = await consumeCountWithResourceReceipt(actor, request.flagKey, flagData);
+      authorization.countConsumed = true;
+      return { ok: true, resources: result?.resources ?? [] };
+    } catch (err) {
+      error("Could not consume the External Reaction itemMacro resource on the reactor's client.", err);
+      return { ok: false, reason: "consume-error" };
+    }
+  });
+  // Execute the Item Macro on the same client that accepted the reaction. This
+  // ensures player-owned reactors roll and open any required UI on their screen;
+  // when the GM owns/is the reactor, the call is routed to that GM client instead.
+  socket.register("executeExternalItemMacro", async function (request = {}) {
+    const senderId = this?.socketdata?.userId;
+    try {
+      await validateExternalReactionSocketRequester(request, senderId);
+      return await executeExternalItemMacroOnClient({ ...request, authenticatedRequesterUserId: senderId });
+    } catch (err) {
+      error("Could not execute the External Reaction Item Macro on the reactor's client.", err);
+      return { __externalReactionExecutionError: true, message: err?.message ?? String(err) };
+    }
+  });
+  socket.register("promptReaction", async function (request = {}) {
+    const senderId = this?.socketdata?.userId;
+    const { actorName, itemName, actorUuid, flagKey, authorizeItemMacro = false, macroPass, requesterUserId, initiatingActorUuid, spellSlotMinimum, title, value, label, rollHTML, timeout = 30 } = request;
+    try {
+      // All prompt requests must come from the socketlib-authenticated caller.
+      // Only ItemMacro prompts need the stricter actor-ownership check, since they
+      // mint a one-time authorization for running reactor-owned code remotely.
+      if (!senderId || senderId !== requesterUserId) {
+        throw new Error("The prompt requester identity did not match the authenticated socket sender.");
+      }
+      if (authorizeItemMacro) await validateExternalReactionSocketRequester(request, senderId);
+      const reactorActor = await fromUuid(actorUuid);
+      if (!reactorActor || (!game.user.isGM && !reactorActor.isOwner)) return false;
+      const options = collectActorExternalOptions(reactorActor);
+      const flagData = options?.[flagKey];
+      if (!flagData) return false;
+      if (authorizeItemMacro && (!isExternalItemMacroTrigger(flagData)
+          || getExternalItemMacroPass(flagData)?.toLowerCase() !== String(macroPass ?? "").toLowerCase())) return false;
+    } catch (err) {
+      warn("Rejected an unauthorized External Reaction prompt request.", err?.message ?? err);
+      return false;
+    }
     const displayValue = String(value ?? "").trim();
     // Keep the body limited to Midi-QoL's roll preview. The optional action button
     // communicates the available bonus; custom explanatory text belongs to a later milestone.
@@ -1978,22 +2264,910 @@ Hooks.once("ready", () => {
       }
     });
     if (result !== true) return false;
+    let resource = null;
     if (Number.isInteger(Number(spellSlotMinimum)) && Number(spellSlotMinimum) >= 1 && Number(spellSlotMinimum) <= 9) {
       // Accepting the reaction only opens the slot selector. The optional reaction
       // is considered accepted after a slot is actually selected and expended.
-      const paid = await chooseAndSpendExternalSpellSlot(actorUuid, Number(spellSlotMinimum));
-      return paid ? { accepted: true, spellSlotPaid: true } : false;
+      resource = await chooseAndSpendExternalSpellSlot(actorUuid, Number(spellSlotMinimum));
+      if (!resource) return false;
     }
-    return true;
+    const acceptedResponse = resource
+      ? { accepted: true, spellSlotPaid: true, resource, resources: [resource] }
+      : { accepted: true };
+    if (authorizeItemMacro) {
+      acceptedResponse.macroRequestToken = issueExternalItemMacroAuthorization({
+        actorUuid, flagKey, macroPass, requesterUserId: senderId
+      });
+    }
+    return resource || authorizeItemMacro ? acceptedResponse : true;
   });
   game.modules.get(MODULE_ID).api = { socket };
   installAbilityCheckIntegration();
   log("Ready; waiting for Midi-QoL attack, saving throw, ability-check, skill, damage, and AC bonus workflows with Midi-QoL activation conditions");
 });
 
+function getExternalItemMacroData(item) {
+  // Read the serialized document flags first. Legacy flag scopes may not be
+  // registered/active in Foundry V14, and Document#getFlag can throw for them.
+  const daeMacro = item?.flags?.dae?.macro ?? item?._source?.flags?.dae?.macro;
+  if (daeMacro != null) return daeMacro;
+
+  // Preserve compatibility with documents that expose the flag via getFlag,
+  // but never allow an unavailable optional scope to break workflow dispatch.
+  try {
+    const macro = item?.getFlag?.("dae", "macro");
+    if (macro != null) return macro;
+  } catch (_) { /* DAE's flag scope may be unavailable on this document. */ }
+
+  const legacyMacro = item?.flags?.itemacro?.macro ?? item?._source?.flags?.itemacro?.macro;
+  if (legacyMacro != null) return legacyMacro;
+
+  try {
+    return item?.getFlag?.("itemacro", "macro") ?? null;
+  } catch (_) {
+    // The legacy Item Macro module's flag scope may not be registered or active.
+    return null;
+  }
+}
+
+function externalEffectHasOptionalFlag(effect, flagKey) {
+  const prefix = `${FLAG_ROOT}.${flagKey}.`;
+  const changes = effect?.system?.changes ?? effect?.changes ?? effect?._source?.system?.changes ?? [];
+  return changes.some(change => String(change?.key ?? "").startsWith(prefix));
+}
+
+function externalItemEffects(item) {
+  const effects = item?.effects ?? item?.system?.effects;
+  if (effects?.contents) return effects.contents;
+  try { return Array.from(effects ?? []); } catch (_) { return []; }
+}
+
+async function resolveExternalReactionMacroItem(actor, flagKey) {
+  const sourceEffect = findGrantingEffect(actor, flagKey);
+  const ownedItems = Array.from(actor?.items ?? []);
+  const actorOwnsItem = item => !!item && (
+    item.parent?.uuid === actor?.uuid
+    || item.actor?.uuid === actor?.uuid
+    || ownedItems.some(owned => owned?.uuid && owned.uuid === item.uuid)
+  );
+  const itemFromDocument = document => {
+    if (!document) return null;
+    if (document.documentName === "Item" || document instanceof Item) return document;
+    if (document.documentName === "ActiveEffect" || document instanceof ActiveEffect) {
+      const parent = document.parent;
+      if (parent?.documentName === "Item" || parent instanceof Item) return parent;
+    }
+    const item = document.item;
+    if (item?.documentName === "Item" || item instanceof Item) return item;
+    return null;
+  };
+  let originItemCandidate = null;
+  const originReferences = [
+    sourceEffect?.origin,
+    sourceEffect?.system?.origin?.item,
+    sourceEffect?.flags?.dae?.itemData?.uuid
+  ].filter(value => typeof value === "string" && value.trim());
+
+  for (const originReference of originReferences) {
+    const reference = originReference.trim();
+    const direct = ownedItems.find(item => item?.uuid === reference);
+    if (direct) {
+      const directMacro = getExternalItemMacroData(direct);
+      if (typeof directMacro?.command === "string" && directMacro.command.trim()) return direct;
+      originItemCandidate ??= direct;
+    }
+
+    // Resolve same-Actor Item UUIDs directly before calling fromUuid. This also
+    // tolerates document subclass/instanceof differences in Foundry V14.
+    const localPrefix = `${actor?.uuid}.Item.`;
+    if (actor?.uuid && reference.startsWith(localPrefix)) {
+      const itemId = reference.slice(localPrefix.length).split(".")[0];
+      const localItem = actor.items?.get?.(itemId) ?? ownedItems.find(item => item?.id === itemId);
+      if (localItem) {
+        const localMacro = getExternalItemMacroData(localItem);
+        if (typeof localMacro?.command === "string" && localMacro.command.trim()) return localItem;
+        originItemCandidate ??= localItem;
+      }
+    }
+
+    try {
+      const originDocument = await fromUuid(reference);
+      const item = itemFromDocument(originDocument);
+      if (actorOwnsItem(item)) {
+        const macro = getExternalItemMacroData(item);
+        if (typeof macro?.command === "string" && macro.command.trim()) return item;
+        originItemCandidate ??= item;
+      }
+    } catch (_) { /* Try embedded-effect lookup below. */ }
+  }
+
+  // A transferred Active Effect may not resolve cleanly back to its source Item.
+  // The source Item still contains the effect change and its embedded macro.
+  const effectItems = ownedItems.filter(item =>
+    externalItemEffects(item).some(effect => externalEffectHasOptionalFlag(effect, flagKey))
+  );
+  const effectItemWithMacro = effectItems.find(item => {
+    const macro = getExternalItemMacroData(item);
+    return typeof macro?.command === "string" && !!macro.command.trim();
+  });
+  if (effectItemWithMacro) return effectItemWithMacro;
+  if (originItemCandidate) return originItemCandidate;
+  if (effectItems.length) return effectItems[0];
+
+  const key = String(flagKey ?? "").trim().toLowerCase();
+  const nameMatch = item => String(item?.name ?? "").trim().toLowerCase() === key
+    || String(item?.identifier ?? "").trim().toLowerCase() === key
+    || String(item?.id ?? "").trim().toLowerCase() === key;
+  return ownedItems.find(item => {
+    if (!nameMatch(item)) return false;
+    const macro = getExternalItemMacroData(item);
+    return typeof macro?.command === "string" && !!macro.command.trim();
+  }) ?? ownedItems.find(nameMatch) ?? null;
+}
+
+function getExternalSpellLevel(workflow) {
+  const candidates = [
+    workflow?.castData?.castLevel, workflow?.castData?.level,
+    workflow?.castLevel, workflow?.spellLevel,
+    workflow?.activity?.spellLevel, workflow?.activity?.level,
+    workflow?.item?.system?.level
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null || String(candidate).trim() === "") continue;
+    const value = Number(candidate);
+    if (Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
+// socketlib supplies the authenticated sender ID in the handler's `this.socketdata.userId`.
+// Use that transport-provided identity rather than trusting a sender ID in the payload.
+async function validateExternalReactionSocketRequester(request, socketSenderId) {
+  if (!socketSenderId || socketSenderId !== request?.requesterUserId) {
+    throw new Error("The socket requester identity did not match the authenticated sender.");
+  }
+  const requester = game.users.get(socketSenderId);
+  if (!requester) throw new Error("The socket requester is not a valid Foundry user.");
+  if (requester.isGM) return requester;
+  const initiatingActor = request?.initiatingActorUuid ? await fromUuid(request.initiatingActorUuid) : null;
+  if (!initiatingActor || !initiatingActor.testUserPermission?.(requester, "OWNER")) {
+    throw new Error("The requesting player does not own the Actor that initiated this workflow.");
+  }
+  return requester;
+}
+
+function issueExternalItemMacroAuthorization({ actorUuid, flagKey, macroPass, requesterUserId }) {
+  const now = Date.now();
+  for (const [token, request] of authorizedExternalItemMacroRequests) {
+    if (request.expiresAt <= now) authorizedExternalItemMacroRequests.delete(token);
+  }
+  // Keep memory use bounded in a long-running world with repeated reactions.
+  while (authorizedExternalItemMacroRequests.size >= 200) {
+    const oldestToken = authorizedExternalItemMacroRequests.keys().next().value;
+    if (oldestToken === undefined) break;
+    authorizedExternalItemMacroRequests.delete(oldestToken);
+  }
+  const token = foundry.utils.randomID(32);
+  authorizedExternalItemMacroRequests.set(token, {
+    actorUuid, flagKey, macroPass: String(macroPass ?? "").toLowerCase(), requesterUserId,
+    expiresAt: now + 5 * 60 * 1000,
+    countConsumed: false
+  });
+  return token;
+}
+
+function findExternalItemMacroAuthorization({ authorizationToken, actorUuid, flagKey, macroPass, requesterUserId, authenticatedRequesterUserId, requireCountConsumed = false } = {}) {
+  if (!authorizationToken || !authenticatedRequesterUserId || requesterUserId !== authenticatedRequesterUserId) return null;
+  const authorization = authorizedExternalItemMacroRequests.get(authorizationToken);
+  if (!authorization) return null;
+  if (authorization.expiresAt <= Date.now()) {
+    authorizedExternalItemMacroRequests.delete(authorizationToken);
+    return null;
+  }
+  if (authorization.actorUuid !== actorUuid || authorization.flagKey !== flagKey
+      || authorization.requesterUserId !== requesterUserId
+      || authorization.macroPass !== String(macroPass ?? "").toLowerCase()
+      || (requireCountConsumed && !authorization.countConsumed)) return null;
+  return authorization;
+}
+
+// Serialize the relevant Item Macro context for socketlib. Foundry Documents and
+// token placeables must be re-resolved on the reactor's client; passing live
+// Workflow/Document instances through socketlib does not preserve their methods.
+function serializeExternalMacroValue(value, depth = 0, seen = new WeakSet()) {
+  if (value === null || value === undefined) return value;
+  const kind = typeof value;
+  if (kind === "string" || kind === "number" || kind === "boolean") return value;
+  if (kind === "function" || kind === "symbol" || kind === "bigint") return undefined;
+  if (depth > 8) return undefined;
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 500).map(entry => serializeExternalMacroValue(entry, depth + 1, seen));
+  }
+
+  // Token placeables are not Documents themselves, so preserve their Token UUID.
+  if (value?.document?.uuid && value?.actor?.uuid && (value.document.documentName === "Token" || value.document.constructor?.documentName === "Token")) {
+    return { __erTokenUuid: value.document.uuid, uuid: value.document.uuid, documentName: "Token" };
+  }
+
+  // Keep Documents as UUID references and restore them on the target client.
+  if (typeof value.uuid === "string" && value.uuid && typeof value.documentName === "string") {
+    return { __erDocumentUuid: value.uuid, uuid: value.uuid, documentName: value.documentName };
+  }
+
+  // Rolls should remain inspectable by macros even when the actual Roll instance
+  // cannot cross a socket. The result includes the values most macros inspect.
+  try {
+    if (typeof value.total === "number" && typeof value.formula === "string" && Array.isArray(value.terms)) {
+      return {
+        __erRollSnapshot: true,
+        total: value.total,
+        _total: value.total,
+        formula: value.formula,
+        options: serializeExternalMacroValue(value.options ?? {}, depth + 1, seen),
+        terms: serializeExternalMacroValue(value.terms, depth + 1, seen)
+      };
+    }
+  } catch (_) { /* A lazy Roll getter may throw before evaluation. */ }
+
+  if (value instanceof Set) {
+    return { __erSet: true, values: [...value].slice(0, 500).map(entry => serializeExternalMacroValue(entry, depth + 1, seen)) };
+  }
+  if (value instanceof Map) {
+    return { __erMap: true, entries: [...value.entries()].slice(0, 500).map(([key, entry]) => [serializeExternalMacroValue(key, depth + 1, seen), serializeExternalMacroValue(entry, depth + 1, seen)]) };
+  }
+  if (value instanceof Date) return value.toISOString();
+  if (seen.has(value)) return undefined;
+  seen.add(value);
+
+  let candidate = value;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) {
+    // D&D system data models can be reduced to ordinary data; live Workflow
+    // objects are replaced by a deliberately selected snapshot before this step.
+    if (typeof value.toObject === "function") {
+      try {
+        const plain = value.toObject(false);
+        if (plain && plain !== value) candidate = plain;
+      } catch (_) { /* Fall back to enumerable plain properties. */ }
+    } else {
+      seen.delete(value);
+      return undefined;
+    }
+  }
+
+  if (candidate !== value) {
+    const converted = serializeExternalMacroValue(candidate, depth + 1, seen);
+    seen.delete(value);
+    return converted;
+  }
+
+  const result = {};
+  for (const key of Object.keys(value).slice(0, 250)) {
+    if (key.startsWith("__er")) continue;
+    let entry;
+    try { entry = value[key]; } catch (_) { continue; }
+    if (typeof entry === "function" || entry === undefined) continue;
+    const serialized = serializeExternalMacroValue(entry, depth + 1, seen);
+    if (serialized !== undefined) result[key] = serialized;
+  }
+  seen.delete(value);
+  return result;
+}
+
+async function restoreExternalMacroValue(value, depth = 0) {
+  if (value === null || value === undefined || typeof value !== "object") return value;
+  if (depth > 8) return undefined;
+
+  if (value.__erDocumentUuid) {
+    try { return await fromUuid(value.__erDocumentUuid) ?? value; }
+    catch (_) { return value; }
+  }
+  if (value.__erTokenUuid) {
+    try {
+      const document = await fromUuid(value.__erTokenUuid);
+      if (!document) return value;
+      const placeable = canvas.tokens?.placeables?.find(token => token.document?.uuid === value.__erTokenUuid)
+        ?? canvas.tokens?.get?.(document.id);
+      return placeable ?? document;
+    } catch (_) { return value; }
+  }
+  if (value.__erRollSnapshot) {
+    return {
+      total: value.total,
+      _total: value._total ?? value.total,
+      formula: value.formula,
+      options: await restoreExternalMacroValue(value.options ?? {}, depth + 1),
+      terms: await restoreExternalMacroValue(value.terms ?? [], depth + 1)
+    };
+  }
+  if (value.__erSet) {
+    const values = await Promise.all((value.values ?? []).map(entry => restoreExternalMacroValue(entry, depth + 1)));
+    return new Set(values);
+  }
+  if (value.__erMap) {
+    const entries = await Promise.all((value.entries ?? []).map(async ([key, entry]) => [
+      await restoreExternalMacroValue(key, depth + 1),
+      await restoreExternalMacroValue(entry, depth + 1)
+    ]));
+    return new Map(entries);
+  }
+  if (Array.isArray(value)) return Promise.all(value.map(entry => restoreExternalMacroValue(entry, depth + 1)));
+  const restored = {};
+  for (const [key, entry] of Object.entries(value)) {
+    restored[key] = await restoreExternalMacroValue(entry, depth + 1);
+  }
+  return restored;
+}
+
+function makeExternalWorkflowSnapshot(workflow, { actionActor, initiatingItem, activity } = {}) {
+  const keys = [
+    "uuid", "id", "activityId", "itemCardUuid", "castData", "castLevel", "spellLevel",
+    "actionType", "itemType", "attackRoll", "attackD20", "attackTotal", "damageRoll",
+    "otherDamageRoll", "bonusDamageRoll", "damageTotal", "bonusDamageTotal", "healRoll",
+    "saveRoll", "checkRoll", "saveResults", "failedSaves", "hitTargets", "targets",
+    "applicationTargets", "allTargets", "isCritical", "isFumble", "isHit", "isMiss",
+    "speaker", "token", "actor", "item", "activity"
+  ];
+  const snapshot = {};
+  for (const key of keys) {
+    try {
+      if (workflow?.[key] !== undefined) snapshot[key] = workflow[key];
+    } catch (_) { /* Ignore unavailable/lazy fields on this Workflow version. */ }
+  }
+  snapshot.actor = actionActor ?? workflow?.actor ?? null;
+  snapshot.item = initiatingItem ?? workflow?.item ?? null;
+  snapshot.activity = activity ?? workflow?.activity ?? null;
+  const spellLevel = getExternalSpellLevel(workflow);
+  if (spellLevel !== null) {
+    snapshot.castLevel ??= spellLevel;
+    snapshot.spellLevel ??= spellLevel;
+    if (!snapshot.castData) snapshot.castData = { castLevel: spellLevel, level: spellLevel };
+  }
+  return snapshot;
+}
+
+async function executeExternalItemMacroOnClient({ actorUuid, flagKey, macroPass, expectedUserId, authorizationToken, requesterUserId, authenticatedRequesterUserId, initiatingActorUuid, macroData: serializedMacroData } = {}) {
+  if (expectedUserId && game.user.id !== expectedUserId) {
+    throw new Error(`Socket ran on unexpected user ${game.user.id}; expected ${expectedUserId}.`);
+  }
+  const authorization = findExternalItemMacroAuthorization({
+    authorizationToken, actorUuid, flagKey, macroPass, requesterUserId,
+    authenticatedRequesterUserId, requireCountConsumed: true
+  });
+  if (!authorization) throw new Error("The Item Macro request has no valid, accepted reactor authorization.");
+  // Consume the one-time authorization before running user-authored code to block replay/reentrancy.
+  authorizedExternalItemMacroRequests.delete(authorizationToken);
+  const actor = await fromUuid(actorUuid);
+  if (!actor) throw new Error(`Reactor Actor could not be resolved: ${actorUuid}`);
+  if (!game.user.isGM && !actor.isOwner) {
+    throw new Error(`Current user does not own reactor Actor '${actor.name}'.`);
+  }
+
+  const options = collectActorExternalOptions(actor);
+  const flagData = options?.[flagKey];
+  if (!flagData || !isExternalItemMacroTrigger(flagData)) {
+    throw new Error(`External Reaction ItemMacro flag '${flagKey}' is no longer present on '${actor.name}'.`);
+  }
+  const macroItem = await resolveExternalReactionMacroItem(actor, flagKey);
+  const macro = getExternalItemMacroData(macroItem);
+  if (!macroItem || typeof macro?.command !== "string" || !macro.command.trim()) {
+    throw new Error(`The source Item Macro for '${actor.name}' / '${flagKey}' could not be resolved on the reactor's client.`);
+  }
+
+  const data = await restoreExternalMacroValue(serializedMacroData ?? {}) ?? {};
+  const reactorToken = normalizeToken(data.reactorToken ?? data.token) ?? findTokenForActor(actor);
+  const targetToken = normalizeToken(data.target) ?? null;
+  data.actor = actor;
+  data.reactor = actor;
+  data.item = macroItem;
+  data.token = reactorToken;
+  data.reactorToken = reactorToken;
+  data.target = targetToken;
+  data.targetActor = targetToken?.actor ?? targetToken?.document?.actor ?? data.targetActor ?? null;
+  data.macroPass = macroPass ?? data.macroPass;
+  data.workflow ??= {};
+  data.externalReaction ??= {};
+  data.externalReaction.trigger ??= {};
+  data.externalReaction.trigger.macroPass ??= data.macroPass;
+  data.externalReaction.trigger.phase ??= data.macroPass;
+
+  // Midi-QoL Item Macros use args[0] as the complete macro data object. Running
+  // the command here keeps game.user, roll dialogs, ownership checks, and local
+  // UI tied to the reactor's owning client. The workflow data is a snapshot;
+  // live Workflow methods cannot be transferred between browser clients.
+  const bindings = { ...data, args: [data] };
+  const reserved = new Set([
+    "await", "yield", "class", "const", "var", "let", "function", "return", "throw", "new",
+    "delete", "void", "typeof", "instanceof", "in", "of", "if", "else", "switch", "case",
+    "break", "continue", "for", "while", "do", "try", "catch", "finally", "this", "super",
+    "extends", "import", "export", "default", "debugger", "with", "enum", "implements",
+    "interface", "package", "private", "protected", "public", "static", "arguments", "eval"
+  ]);
+  const parameterNames = Object.keys(bindings).filter(name =>
+    /^[A-Za-z_$][\w$]*$/.test(name) && !reserved.has(name)
+  );
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  // Run user-authored macro code in a child function scope. Midi-style Item
+  // Macros commonly declare local names such as `data`, `args`, or
+  // `externalReaction`; those declarations must be allowed to shadow the
+  // compatibility bindings above instead of colliding with formal parameters
+  // in the generated AsyncFunction body.
+  const wrappedCommand = `return await (async () => {\n${macro.command}\n})()`;
+  const runner = new AsyncFunction(...parameterNames, wrappedCommand);
+  const result = await runner(...parameterNames.map(name => bindings[name]));
+
+  // D&D 5e Activities are returned as references so the originating workflow can
+  // resolve and start them locally after this client-side macro has completed.
+  if (result && typeof result.use === "function" && result.item && typeof result.uuid === "string") return result.uuid;
+  if (result && typeof result.documentName === "string" && result.documentName === "Activity" && typeof result.uuid === "string") return result.uuid;
+  return serializeExternalMacroValue(result);
+}
+
+async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken, eventFlags, accepted, macroPass = "preItemRoll", stageContext = {} }) {
+  const macroItem = await resolveExternalReactionMacroItem(reactor.actor, flagKey);
+  const macroDataFlag = getExternalItemMacroData(macroItem);
+  if (!macroItem || typeof macroDataFlag?.command !== "string" || !macroDataFlag.command.trim()) {
+    warn("activity.trigger is itemMacro but no Item Macro command could be resolved for the reactor's source Item; leaving the original workflow unchanged.", {
+      reactor: reactor.actor?.name, flagKey, item: macroItem?.name
+    });
+    return { action: "continue" };
+  }
+  const resourceReceipts = [
+    ...(Array.isArray(accepted?.resources) ? accepted.resources : accepted?.resource ? [accepted.resource] : [])
+  ];
+  let consumed;
+  try {
+    consumed = await socket.executeAsUser("consumeExternalItemMacroCount", recipient.id, {
+      actorUuid: reactor.actor.uuid,
+      flagKey,
+      macroPass,
+      authorizationToken: accepted?.macroRequestToken,
+      requesterUserId: game.user.id,
+      initiatingActorUuid: workflow?.actor?.uuid ?? stageContext.actionActor?.uuid ?? null
+    });
+  } catch (err) {
+    error("Could not consume the accepted External Reaction count on the reactor's client; continuing the original workflow.", err);
+    return { action: "continue" };
+  }
+  if (!consumed?.ok) {
+    warn("The accepted itemMacro reaction could not consume its count; leaving the original workflow unchanged.", { flagKey, actor: reactor.actor?.name, reason: consumed?.reason });
+    return { action: "continue" };
+  }
+  resourceReceipts.push(...(consumed.resources ?? []));
+  const actionActorToken = normalizeToken(stageContext.actionActorToken) ?? getWorkflowToken(workflow);
+  const activity = workflow?.activity ?? workflow?.item?.system?.activities?.get?.(workflow?.activityId) ?? stageContext.activity ?? null;
+  const initiatingItem = workflow?.item ?? activity?.item ?? stageContext.item ?? null;
+  const actionActor = workflow?.actor ?? stageContext.actionActor ?? actionActorToken?.actor ?? initiatingItem?.actor ?? null;
+  const eventContext = {
+    type: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
+    eventFlags,
+    phase: macroPass,
+    macroPass,
+    workflowId: workflow?.uuid ?? workflow?.id ?? null,
+    actorUuid: actionActor?.uuid ?? null,
+    itemUuid: initiatingItem?.uuid ?? null,
+    activityUuid: activity?.uuid ?? null,
+    spellLevel: getExternalSpellLevel(workflow),
+    reactorUuid: reactor.actor?.uuid,
+    flagKey
+  };
+  const macroData = workflow.getMacroData?.() ?? {};
+  // Match Midi-QoL's actual workflow pass so the Item Macro can reason about stage.
+  // A live Workflow instance cannot be passed through socketlib, so provide a
+  // focused snapshot and re-resolve its Documents on the reactor's owning client.
+  macroData.macroPass = macroPass;
+  macroData.workflow = makeExternalWorkflowSnapshot(workflow, { actionActor, initiatingItem, activity });
+  if (actionActor && !macroData.initiatingActor) macroData.initiatingActor = actionActor;
+  if (initiatingItem && !macroData.initiatingItem) macroData.initiatingItem = initiatingItem;
+  if (activity && !macroData.initiatingActivity) macroData.initiatingActivity = activity;
+  macroData.tag = "externalReaction";
+  macroData.actor = reactor.actor;
+  macroData.actorData = reactor.actor?.toObject?.(false) ?? reactor.actor?.system?.toObject?.(false) ?? macroData.actorData;
+  macroData.actorUuid = reactor.actor?.uuid;
+  macroData.actorId = reactor.actor?.id;
+  macroData.token = normalizeToken(reactor.token) ?? findTokenForActor(reactor.actor);
+  macroData.tokenId = macroData.token?.document?.id ?? macroData.token?.id;
+  macroData.item = macroItem;
+  macroData.itemData = macroItem?.toObject?.(false) ?? macroData.itemData;
+  macroData.itemUuid = macroItem?.uuid;
+  macroData.itemId = macroItem?.id;
+  macroData.target = triggerToken;
+  macroData.targetActor = triggerToken?.actor ?? triggerToken?.document?.actor ?? actionActor;
+  macroData.externalReaction = { trigger: eventContext, resource: resourceReceipts[0] ?? null, resources: resourceReceipts };
+  macroData.resource = resourceReceipts[0] ?? null;
+  macroData.resources = resourceReceipts;
+  macroData.reactor = reactor.actor;
+  macroData.reactorToken = macroData.token;
+
+  let result;
+  try {
+    result = await socket.executeAsUser("executeExternalItemMacro", recipient.id, {
+      expectedUserId: recipient.id,
+      actorUuid: reactor.actor.uuid,
+      flagKey,
+      macroPass,
+      authorizationToken: accepted?.macroRequestToken,
+      requesterUserId: game.user.id,
+      initiatingActorUuid: actionActor?.uuid ?? null,
+      macroData: serializeExternalMacroValue(macroData)
+    });
+    if (result?.__externalReactionExecutionError) {
+      throw new Error(result.message ?? "The reactor's client could not execute the Item Macro.");
+    }
+  } catch (err) {
+    error(`Item Macro trigger failed on the reactor's client for ${reactor.actor?.name} (${flagKey}); continuing the original workflow.`, err);
+    return { action: "continue" };
+  }
+
+  if (result === true || (typeof result === "string" && result.trim().toLowerCase() === "cancel")) {
+    log(`Item Macro trigger cancelled the remaining workflow (${flagKey}).`, eventContext);
+    return { action: "cancel", trigger: eventContext };
+  }
+  if (result === false || result === 0 || result === null || result === undefined
+      || (typeof result === "string" && ["", "0", "continue"].includes(result.trim().toLowerCase()))) {
+    log(`Item Macro trigger elected to continue the original workflow (${flagKey}).`, eventContext);
+    return { action: "continue", trigger: eventContext };
+  }
+
+  let activityReference = null;
+  let cancelOriginalAfterActivity = false;
+  if (result && typeof result === "object" && typeof result.use !== "function") {
+    const action = String(result.action ?? "").trim().toLowerCase();
+    if (action === "cancel") return { action: "cancel", trigger: eventContext };
+    if (action === "continue") return { action: "continue", trigger: eventContext };
+    if (action === "activity") {
+      const activityValue = result.activityUuid ?? result.activity ?? result.trigger;
+      activityReference = typeof activityValue === "string" ? activityValue : activityValue?.uuid ?? null;
+      cancelOriginalAfterActivity = result.cancelOriginal === true;
+    }
+  } else if (result && typeof result === "object" && typeof result.use === "function" && result.item) {
+    activityReference = result.uuid ?? null;
+  } else if (typeof result === "string") {
+    activityReference = result.trim();
+  }
+
+  if (activityReference) {
+    const activityDocument = await resolveExternalTriggeredActivity(reactor.actor, activityReference);
+    if (!activityDocument) {
+      warn("Item Macro returned a value that did not resolve to an Activity; continuing the original workflow.", {
+        reactor: reactor.actor?.name, flagKey, activityReference
+      });
+      return { action: "continue", trigger: eventContext };
+    }
+    const token = normalizeToken(reactor.token) ?? findTokenForActor(reactor.actor);
+    const tokenUuid = token?.document?.uuid ?? token?.uuid;
+    try {
+      const started = await socket.executeAsUser("triggerExternalActivity", recipient.id, {
+        actorUuid: reactor.actor.uuid,
+        tokenUuid,
+        trigger: activityDocument.uuid ?? activityReference,
+        suppressItemMacroUuid: macroItem?.uuid ?? null
+      });
+      if (started === false) debug("Item Macro returned an Activity, but its use was cancelled or unavailable.", { flagKey, activityReference });
+      return { action: cancelOriginalAfterActivity && started !== false ? "cancel" : "continue", trigger: eventContext, activityUuid: activityDocument.uuid };
+    } catch (err) {
+      error(`Could not trigger the Activity returned by the Item Macro for ${reactor.actor?.name}.`, err);
+      return { action: "continue", trigger: eventContext };
+    }
+  }
+
+  warn("Item Macro returned an unsupported value; continuing the original workflow.", { reactor: reactor.actor?.name, flagKey, result });
+  return { action: "continue", trigger: eventContext };
+}
+
+function getExternalItemMacroDispatchState(workflow) {
+  if (!workflow.__externalReactionItemMacroDispatchState) {
+    Object.defineProperty(workflow, "__externalReactionItemMacroDispatchState", {
+      configurable: true,
+      enumerable: false,
+      writable: false,
+      value: { seenPasses: new Set(), originalCallMacros: null, originalSavesComplete: null, dispatching: false }
+    });
+  }
+  return workflow.__externalReactionItemMacroDispatchState;
+}
+
+function installExternalItemMacroWorkflowStateGuards(workflow) {
+  if (!workflow || typeof workflow.WorkflowState_SavesComplete !== "function"
+      || typeof workflow.WorkflowState_Abort !== "function") return false;
+  const state = getExternalItemMacroDispatchState(workflow);
+  if (state.originalSavesComplete) return true;
+  const original = workflow.WorkflowState_SavesComplete;
+  Object.defineProperty(workflow, "WorkflowState_SavesComplete", {
+    configurable: true, enumerable: false, writable: true,
+    value: async function(...args) {
+      const nextState = await original.apply(this, args);
+      if (this.__externalReactionCancelPass === "postSave") {
+        this.__externalReactionCancelPass = null;
+        debug("Routing a cancelled postSave Item Macro workflow directly to Abort before damage application.");
+        return this.WorkflowState_Abort;
+      }
+      return nextState;
+    }
+  });
+  state.originalSavesComplete = original;
+  return true;
+}
+
+function installExternalItemMacroPassDispatcher(workflow) {
+  if (!workflow) return false;
+  installExternalItemMacroWorkflowStateGuards(workflow);
+  if (typeof workflow.callMacros !== "function") return false;
+  const state = getExternalItemMacroDispatchState(workflow);
+  if (state.originalCallMacros) return true;
+  state.originalCallMacros = workflow.callMacros;
+  workflow.callMacros = async function(item, macros, tag, macroPass, ...rest) {
+    // Match again with the live Workflow before its native ItemMacro pass runs;
+    // legacy preTargeting may only provide an Activity/configuration tuple.
+    markExternalTriggeredActivityWorkflow(this);
+    let effectiveMacros = macros;
+    const suppressItemUuid = this.__externalReactionSuppressItemMacroUuid;
+    if (tag === "OnUse" && suppressItemUuid && item?.uuid === suppressItemUuid && typeof macros === "string") {
+      const names = macros.split(",").map(name => name.trim()).filter(Boolean);
+      const filtered = names.filter(name => {
+        const baseName = name.split("|", 1)[0].trim().toLowerCase();
+        return baseName !== "itemmacro" && !baseName.startsWith("itemmacro.");
+      });
+      if (filtered.length !== names.length) {
+        debug("Skipped recursive native ItemMacro on Activity returned by External Reaction.", {
+          item: item?.name, macroPass, removed: names.filter(name => !filtered.includes(name))
+        });
+        effectiveMacros = filtered.join(",");
+      }
+    }
+    const results = await state.originalCallMacros.call(this, item, effectiveMacros, tag, macroPass, ...rest);
+    const passName = String(macroPass ?? "").trim();
+    if (tag === "OnUse" && EXTERNAL_ITEM_MACRO_PASSES.has(passName.toLowerCase())
+        && !EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES.has(passName.toLowerCase())
+        && !state.dispatching && !this.aborted && !state.seenPasses.has(passName.toLowerCase())) {
+      const canonicalPass = EXTERNAL_ITEM_MACRO_PASSES.get(passName.toLowerCase());
+      const outcome = await dispatchExternalItemMacroStage(this, canonicalPass);
+      if (outcome.cancel) {
+        // Midi-QoL's preActiveEffects pass has a specific result contract for
+        // stopping effect application. At this point, damage may already exist,
+        // so stop effects without pretending earlier work was rolled back.
+        if (canonicalPass === "preActiveEffects") {
+          return [...(Array.isArray(results) ? results : []), { haltEffectsApplication: true }];
+        }
+        this.aborted = true;
+        if (canonicalPass === "postSave") this.__externalReactionCancelPass = "postSave";
+      }
+    }
+    return results;
+  };
+  return true;
+}
+
+async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext = {}) {
+  if (!workflow || !macroPass) return { cancel: false };
+  const state = getExternalItemMacroDispatchState(workflow);
+  const passKey = String(macroPass).toLowerCase();
+  if (state.seenPasses.has(passKey) || state.dispatching || workflow.aborted) return { cancel: false };
+  state.dispatching = true;
+  try {
+    const midi = game.modules.get("midi-qol")?.api;
+    const socket = game.modules.get(MODULE_ID)?.api?.socket;
+    if (!socket || !midi?.playerForActor || !midi?.midiRenderRoll) return { cancel: false };
+    const activity = stageContext.activity ?? workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
+    const item = stageContext.item ?? workflow.item ?? activity?.item ?? null;
+    const actionType = String(stageContext.actionType ?? activity?.actionType ?? activity?.system?.actionType ?? item?.system?.actionType ?? "").toLowerCase();
+    const eventFlags = getExternalWorkflowEventFlags(workflow, { ...stageContext, actionType, activity, item, itemUse: true });
+    const actionActorToken = normalizeToken(stageContext.actionActorToken) ?? getWorkflowToken(workflow) ?? findTokenForActor(stageContext.actionActor ?? item?.actor);
+    const actionActor = workflow.actor ?? stageContext.actionActor ?? actionActorToken?.actor ?? item?.actor;
+    // The hook may fire before Midi has copied its usage context onto Workflow.
+    if (!actionActorToken?.actor || actionActorToken.actor.uuid !== actionActor?.uuid) {
+      debug("Skipping itemMacro interception because the initiating actor has no matching scene token/workflow context.", {
+        actor: actionActor?.name, item: item?.name, macroPass
+      });
+      return { cancel: false };
+    }
+    if (!Object.values(eventFlags).some(Boolean)) {
+      debug("Skipping itemMacro interception because no workflow event flags were identified.", { actor: actionActor?.name, item: item?.name, macroPass, actionType });
+      return { cancel: false };
+    }
+    state.seenPasses.add(passKey);
+    const targets = [...(stageContext.targets ?? workflow.targets ?? game.user.targets ?? [])].map(normalizeToken).filter(Boolean);
+    const actorMap = collectSceneActors([actionActorToken, ...targets].filter(Boolean));
+    const gm = game.users.find(user => user.active && user.isGM);
+
+    for (const { actor, token } of actorMap.values()) {
+      if (!actor || actor.uuid === actionActor?.uuid) continue;
+      const options = collectActorExternalOptions(actor);
+      for (const [flagKey, flagData] of Object.entries(options)) {
+        if (!flagData || typeof flagData !== "object" || !isExternalItemMacroTrigger(flagData)) continue;
+        const configuredPass = getExternalItemMacroPass(flagData);
+        if (!configuredPass) {
+          debug("Skipping itemMacro optional with an unsupported or invalid Midi-QoL macro pass.", { reactor: actor.name, flagKey, configured: foundry.utils.getProperty(flagData, "activity.macroPass") ?? foundry.utils.getProperty(flagData, "activity.trigger") });
+          continue;
+        }
+        if (configuredPass.toLowerCase() !== passKey) continue;
+        const user = midi.playerForActor(actor);
+        const recipient = user?.active ? user : gm;
+        if (!recipient) continue;
+        const reactorToken = findTokenForActor(actor, [token]);
+        const reactor = { actor, token: reactorToken ?? token, flagKey, flagData, usesCharacterReaction: flagData.count === "reaction" || flagData.countAlt === "reaction", recipient, midi };
+        if (!countAvailable(actor, flagData, flagKey)) continue;
+        if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
+        const macroItem = await resolveExternalReactionMacroItem(actor, flagKey);
+        const itemMacro = getExternalItemMacroData(macroItem);
+        if (!macroItem) {
+          debug("Skipping itemMacro optional because its source Item could not be resolved from the effect origin or the Actor's embedded Item effects.", { reactor: actor.name, flagKey, macroPass });
+          continue;
+        }
+        if (typeof itemMacro?.command !== "string" || !itemMacro.command.trim()) {          debug("Skipping itemMacro optional because no macro command was found on its source Item (checked DAE/DIME and Item Macro flags).", { reactor: actor.name, flagKey, sourceItem: macroItem.name, macroPass });
+          continue;
+        }
+        const actionKind = eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse";
+        const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken, {
+          ...stageContext, actionKind, phase: macroPass, actionType, activity, item, eventFlags,
+          actionActorToken, actionActor, actionTargetToken: targets[0] ?? actionActorToken
+        }, midi);
+        if (!activationAllowed || !countAvailable(actor, flagData, flagKey)) continue;
+        if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
+        const title = `${actionActor?.name ?? "A creature"} is using ${item?.name ?? activity?.item?.name ?? "an item"} — ${actor.name}'s reaction`;
+        const value = String(flagData.label ?? `Use ${macroItem.name}`);
+        const accepted = await promptForReaction(socket, midi, reactor, workflow, null, value, flagData, title, { actionActor, item, activity, macroPass });
+        if (!accepted) continue;
+        if (!countAvailable(actor, flagData, flagKey, { ignorePaidSpellSlot: accepted?.spellSlotPaid === true })
+            || (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor))) continue;
+        const outcome = await executeExternalItemMacroTrigger({
+          reactor, workflow, flagKey, flagData, recipient, socket,
+          triggerToken: actionActorToken, eventFlags, accepted, macroPass,
+          stageContext: { ...stageContext, actionActorToken, actionActor, item, activity }
+        });
+        if (outcome.action === "cancel") {
+          log(`Item Macro trigger cancelled the remaining Midi-QoL workflow at ${macroPass} (${flagKey}).`, outcome.trigger);
+          return { cancel: true, trigger: outcome.trigger };
+        }
+      }
+    }
+    return { cancel: false };
+  } catch (err) {
+    error(`External itemMacro workflow interception failed at ${macroPass}; leaving the original Midi-QoL workflow unchanged.`, err);
+    return { cancel: false };
+  } finally {
+    state.dispatching = false;
+  }
+}
+
+// Do not return installExternalItemMacroPassDispatcher's boolean from this hook.
+// Midi-QoL treats a false preTargeting hook result as an abort. In some Foundry/D&D5e
+// activity contexts there is no callMacros method yet, and the installer returns false;
+// returning that value would cancel every item use even when no External Reaction applies.
+Hooks.on("midi-qol.preTargeting", workflow => {
+  markExternalTriggeredActivityWorkflow(workflow);
+  installExternalItemMacroPassDispatcher(workflow);
+});
+
+// Midi-QoL V2 passes the live Workflow; the legacy preTargeting signature can
+// pass an Activity and configuration instead, before a Workflow exists.
+Hooks.on("midi-qol.preTargetingV2", workflow => {
+  markExternalTriggeredActivityWorkflow(workflow);
+  installExternalItemMacroPassDispatcher(workflow);
+});
+
+function describeExternalPreItemRollHookArg(value) {
+  if (!value || typeof value !== "object") return { type: typeof value, value: String(value) };
+  return {
+    type: Array.isArray(value) ? "Array" : value.constructor?.name ?? "Object",
+    keys: Object.keys(value).slice(0, 12),
+    hasCallMacro: typeof value.callMacro === "function",
+    hasCallMacros: typeof value.callMacros === "function",
+    hasWorkflow: !!value.workflow,
+    actor: value.actor?.name ?? value.actor?.document?.name ?? null,
+    item: value.item?.name ?? null,
+    activity: value.activity?.name ?? value.name ?? null
+  };
+}
+
+function findExternalPreItemRollWorkflow(hookArgs) {
+  const queue = [...hookArgs];
+  const visited = new Set();
+  const relatedKeys = ["workflow", "config", "usage", "context", "data", "args", "payload"];
+  while (queue.length) {
+    const value = queue.shift();
+    if (!value || typeof value !== "object" || visited.has(value)) continue;
+    visited.add(value);
+    if (typeof value.callMacro === "function") return value;
+    if (Array.isArray(value)) {
+      queue.unshift(...value.slice(0, 12));
+      continue;
+    }
+    for (const key of relatedKeys) if (value[key] && typeof value[key] === "object") queue.unshift(value[key]);
+  }
+  return null;
+}
+
+async function dispatchExternalPreItemRollHook(...hookArgs) {
+  const workflow = findExternalPreItemRollWorkflow(hookArgs);
+  const argDescriptions = hookArgs.map(describeExternalPreItemRollHookArg);
+  if (!workflow) {
+    debug("preItemRoll hook fired, but no usable live Workflow with callMacro was exposed; skipping this callback.", { hookArgs: argDescriptions });
+    return;
+  }
+
+  const queue = [...hookArgs];
+  const visited = new Set();
+  let activity = workflow.activity ?? null;
+  let token = normalizeToken(workflow.token);
+  let config = null;
+  while (queue.length) {
+    const value = queue.shift();
+    if (!value || typeof value !== "object" || visited.has(value)) continue;
+    visited.add(value);
+    if (!activity && value.item && (value.type || value.system?.type) && value.item.type) activity = value;
+    if (!token && (value.documentName === "Token" || value.document?.documentName === "Token" || (value.actor && value.document))) token = normalizeToken(value);
+    if (!config && (value.workflow || value.targetUuids || value.midiOptions || value.targets)) config = value;
+    if (Array.isArray(value)) {
+      queue.unshift(...value.slice(0, 12));
+      continue;
+    }
+    for (const key of ["workflow", "config", "usage", "context", "data", "args", "payload"]) if (value[key] && typeof value[key] === "object") queue.unshift(value[key]);
+  }
+  activity ??= workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
+  const item = workflow.item ?? activity?.item ?? null;
+  const actionActor = workflow.actor ?? token?.actor ?? item?.actor ?? activity?.item?.actor ?? null;
+  token ??= findTokenForActor(actionActor);
+  if (!workflow.item && item) {
+    try { workflow.item = item; } catch (_) { /* Keep context fallback below. */ }
+  }
+  if (!workflow.activity && activity) {
+    try { workflow.activity = activity; } catch (_) { /* Keep context fallback below. */ }
+  }
+  installExternalItemMacroPassDispatcher(workflow);
+  const stageContext = {
+    activity, item, actionActor, actionActorToken: token,
+    targets: workflow.targets ?? config?.targets ?? [...(game.user.targets ?? [])]
+  };
+  debug("Dispatching preItemRoll interception from Midi-QoL hook.", {
+    actor: actionActor?.name, item: item?.name, activity: activity?.name,
+    token: token?.name ?? token?.document?.name,
+    workflowHasCallMacro: typeof workflow.callMacro === "function",
+    hookArgs: argDescriptions
+  });
+  const outcome = await dispatchExternalItemMacroStage(workflow, "preItemRoll", stageContext);
+  if (outcome.cancel) {
+    workflow.aborted = true;
+    return false;
+  }
+}
+
+Hooks.on("midi-qol.preItemRoll", (...hookArgs) => dispatchExternalPreItemRollHook(...hookArgs));
+Hooks.on("midi-qol.preItemRollV2", (...hookArgs) => dispatchExternalPreItemRollHook(...hookArgs));
+
+// For these passes, use Midi-QoL's awaited/cancellable hooks instead of relying
+// only on the generic OnUse macro dispatcher. Some internal stages continue
+// work after their OnUse pass and don't test workflow.aborted immediately.
+async function dispatchExternalItemMacroHook(workflow, macroPass, { cancellable = false } = {}) {
+  if (!workflow) return;
+  installExternalItemMacroPassDispatcher(workflow);
+  const outcome = await dispatchExternalItemMacroStage(workflow, macroPass);
+  if (!outcome.cancel) return;
+  workflow.aborted = true;
+  if (cancellable) return false;
+}
+
+// Midi-QoL V14 falls through to the core D&D5e attack-roll implementation when
+// configureAttackRoll returns false. Mark the live workflow aborted instead,
+// then let configureAttackRoll complete so rollAttack's workflow.aborted guard
+// exits before opening the configurator or rolling a d20.
+Hooks.on("midi-qol.preAttackRoll", async workflow => {
+  if (!workflow) return;
+  installExternalItemMacroPassDispatcher(workflow);
+  const outcome = await dispatchExternalItemMacroStage(workflow, "preAttackRoll");
+  if (outcome.cancel) {
+    workflow.aborted = true;
+    log("Cancelled attack before the roll configurator; workflow marked aborted.", outcome.trigger);
+  }
+});
+Hooks.on("midi-qol.preCheckHits", workflow => dispatchExternalItemMacroHook(workflow, "preCheckHits"));
+Hooks.on("midi-qol.preDamageRoll", workflow => dispatchExternalItemMacroHook(workflow, "preDamageRoll", { cancellable: true }));
+Hooks.on("midi-qol.preCheckSaves", workflow => dispatchExternalItemMacroHook(workflow, "preSave"));
+
 Hooks.on("midi-qol.preAttackRoll", async (workflow) => {
   try {
-    if (!workflow || patchedWorkflows.has(workflow)) return;
+    if (!workflow || workflow.aborted || patchedWorkflows.has(workflow)) return;
     const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId);
     const targets = [...(workflow.targets ?? [])];
     const midi = game.modules.get("midi-qol")?.api;
@@ -2056,6 +3230,7 @@ Hooks.on("midi-qol.preAttackRoll", async (workflow) => {
         for (const reactor of reactorMap.values()) {
           await withExternalCountLock(reactor.actor, reactor.flagKey, async () => {
             const { actor, flagKey, flagData, usesCharacterReaction, recipient } = reactor;
+            if (isExternalItemMacroTrigger(flagData)) return;
             if (!countAvailable(actor, flagData, flagKey)) return;
             if (usesCharacterReaction && midi.hasUsedReaction?.(actor)) return;
             let value;
@@ -2459,7 +3634,7 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   for (const { actor, token } of actorMap.values()) {
     const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
     for (const [flagKey, flagData] of Object.entries(optional)) {
-      if (!flagData || typeof flagData !== "object" || !(rollKind === "skill" ? hasExternalSkillFlag(flagData) : hasExternalCheckFlag(flagData))) continue;
+      if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData) || !(rollKind === "skill" ? hasExternalSkillFlag(flagData) : hasExternalCheckFlag(flagData))) continue;
       const user = midi.playerForActor(actor);
       const recipient = user?.active ? user : gm;
       if (!recipient) continue;
@@ -2689,7 +3864,7 @@ async function processExternalACBonuses(workflow, midi, socket) {
       const options = collectActorExternalOptions(reactorActor);
       for (const [flagKey, flagData] of Object.entries(options)) {
         await withExternalCountLock(reactorActor, flagKey, async () => {
-          if (!flagData || typeof flagData !== "object") return;
+          if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)) return;
           const selectors = collectExternalACSelectors(reactorActor, flagKey, flagData);
           if (!selectors.size) return;
 
@@ -2819,8 +3994,7 @@ function getExternalDamageTypeEntries() {
   // labels from CONFIG; configured entries below take precedence over these fallbacks.
   const fallbackEntries = [
     ["acid", { label: "Acid" }], ["bludgeoning", { label: "Bludgeoning" }],
-    ["cold", { label: "Cold" }], ["fire", { label: "Fire" }], ["force", { label: "Force" }],
-    ["lightning", { label: "Lightning" }], ["necrotic", { label: "Necrotic" }],
+    ["cold", { label: "Cold" }], ["fire", { label: "Fire" }], ["force", { label: "Force" }],    ["lightning", { label: "Lightning" }], ["necrotic", { label: "Necrotic" }],
     ["piercing", { label: "Piercing" }], ["poison", { label: "Poison" }],
     ["psychic", { label: "Psychic" }], ["radiant", { label: "Radiant" }],
     ["slashing", { label: "Slashing" }], ["thunder", { label: "Thunder" }],
@@ -3075,7 +4249,7 @@ async function collectExternalDamageReactors(workflow, midi) {
     if (actor.uuid === workflow?.actor?.uuid) continue;
     const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
     for (const [flagKey, flagData] of Object.entries(optional)) {
-      if (!flagData || typeof flagData !== "object") continue;
+      if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)) continue;
       const selector = getExternalDamageSelector(flagData, actionType);
       if (!selector) continue;
       if (!countAvailable(actor, flagData, flagKey)) continue;
@@ -3174,7 +4348,7 @@ Hooks.on("midi-qol.preCheckSaves", async (workflow) => {
     for (const { actor, token } of actorMap.values()) {
       const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
       for (const [flagKey, flagData] of Object.entries(optional)) {
-        if (!flagData || typeof flagData !== "object") continue;
+        if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)) continue;
         const hasSaveFlag = [
           "save.all", "save.fail.all", "save.success.all",
           ...["str", "dex", "con", "int", "wis", "cha"].flatMap(ab => [`save.${ab}`, `save.fail.${ab}`, `save.success.${ab}`])

@@ -347,3 +347,30 @@ The following are small recipes. Each row is still a separate Active Effect chan
 6. **Activation conditions are executable expressions.** Keep them simple, verify spelling and identifiers, and test them with Midi-QoL debug logging enabled.
 7. **Use Override for these examples.** Active Effect modes such as Add are meant for arithmetic changes to system data. External Reaction reads its own flag values as configuration; Add/Multiply/etc. may change how the flag is stored or interpreted and are not recommended here.
 8. **Verify the installed build.** This list reflects the documented External Reaction behavior at the time of writing; it is an example catalogue, not a guarantee that every formula is appropriate for every item or workflow.
+
+
+## External Reaction Item Macro workflow invocation
+
+This workflow-interception feature is distinct from using the `ItemMacro` string as a normal roll value. Configure an External Reaction Item Macro with the `activity.trigger` field on the reactor's granting Active Effect.
+
+| Active Effect change key | Value | Meaning |
+|---|---|---|
+| `flags.external-reaction.optional.NAME.activity.trigger` | `itemMacro` | Run the Item Macro at External Reaction's default `postActiveEffects` pass after the reactor accepts. |
+| `flags.external-reaction.optional.NAME.activity.trigger` | `ItemMacro, postAttackRoll` | Run the Item Macro after attack adjudication and before damage. |
+| `flags.external-reaction.optional.NAME.activity.macroPass` | `preItemRoll` | Set the macro pass separately; this overrides the default/embedded pass. |
+| `flags.external-reaction.optional.NAME.count` | `reaction` | Require and expend the reactor's reaction when accepting. Combine with `countAlt = spellslot 3` when a level 3+ slot is also needed. |
+
+Keep the command stored on the source Item using the DAE/DIME Item Macro mechanism or supported legacy storage. **Do not also register that same command in Midi-QoL's On Use Macro stages** when External Reaction owns its invocation; otherwise it can run twice or recurse when it launches an Activity.
+
+The macro runs on the reactor's selected client: the active player who owns the reactor Actor, or the GM for a GM-owned reactor/GM fallback. Its context is passed through `args[0]`. The initiating `workflow` is a serializable snapshot, not a live Midi-QoL Workflow instance. The wrapper isolates the macro's local scope, so declarations such as the following are safe:
+
+```js
+const macroArgs = Array.isArray(args) ? args : [];
+const data = macroArgs[0] ?? {};
+const externalReaction = data.externalReaction ?? {};
+
+// A supported return value controls the original workflow.
+return "continue";
+```
+
+Supported results include `"cancel"` / `true` to abort the remaining workflow, `"continue"` / `false` to continue, an Activity UUID/reference to use that Activity on the reactor's client, or a supported structured Activity result. Cancellation is not a rollback: rolls, resources, HP, or effects already applied at a later pass are not automatically restored.

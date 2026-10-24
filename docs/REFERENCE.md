@@ -83,6 +83,8 @@ Activation-condition context:
 - Each range is measured independently. If a condition references a range whose required token is unavailable or whose distance cannot be measured, the activation condition is rejected rather than allowing JavaScript to compare an unavailable value as zero. All ranges use Midi-QoL's configured measurement behavior and do not independently account for walls; combine with `CanSee` when line of sight matters.
 - Midi-QoL's built-in activation-condition helpers are available, including helpers such as `canSee(token, target)`, `canSense`, `findNearby`, `findNearbyCount`, `checkNearby`, `hasCondition`, `checkDefeated`, `checkIncapacitated`, `getDistance`, `computeDistance`, `checkDistance`, `checkActivityRange`, `fromUuidSync`, and `sizeNumeric`, plus helpers supplied by the installed Midi-QoL build.
 - Module flags and roll data accessible to the evaluator can be referenced. Arbitrary global functions from another module are not automatically imported: they must be exposed to Midi-QoL's activation evaluator or available through the supplied data, just as with Midi-QoL conditions generally.
+- Workflow event booleans can be used as bare identifiers: `cast`, `attack`, `mwak`, `rwak`, `msak`, `rsak`, `save`, `check`, `skill`, `damage`, `heal`, `concentration`, `deathSave`, `initiative`, `tool`, `utility`, and `itemUse`. They are Boolean flags, not functions. They are true only when the current workflow context identifies that event/type. The initial `itemMacro` interceptor runs at `midi-qol.preItemRoll`; it detects item/activity use. In this build, `concentration`, `deathSave`, and `initiative` are reserved flags and do not independently trigger on those events; dedicated hooks for concentration, death saves, initiative, or movement have not been implemented.
+- For item/activity workflows, `cast` can be true at the same time as `attack`, `save`, `check`, or `skill`; for example, a spell with a saving-throw activity is still a cast. The action-type flags `mwak`, `rwak`, `msak`, and `rsak` match the workflow/activity action type.
 
 Examples (set as the value of `flags.external-reaction.optional.NAME.activation`):
 
@@ -170,7 +172,57 @@ Add this Active Effect change to the same `flags.external-reaction.optional.NAME
 |---|---|
 | `flags.external-reaction.optional.NAME.activity.trigger` | `Actor.abc123.Item.def456.Activity.ghi789` |
 
-The trigger runs **after the reactor accepts** the optional-reaction prompt. It runs on the reactor's owning user's client (or the GM fallback), then the original optional bonus/reaction continues through its existing processing. If the player cancels the triggered Activity's target selector, the triggered Activity is skipped but the already-accepted optional bonus still resolves.
+The normal Activity trigger runs **after the reactor accepts** the optional-reaction prompt. It runs on the reactor's owning user's client (or the GM fallback), then the original optional bonus/reaction continues through its existing processing. If the player cancels the triggered Activity's target selector, the triggered Activity is skipped but the already-accepted optional bonus still resolves.
+
+#### Item Macro workflow interception
+
+**Do not assign the source Item's Item Macro to any Midi-QoL On Use Macro stage when External Reaction owns its invocation.** Keep the command stored on the Item using DAE/DIME Item Macro storage (or supported legacy storage), but leave `ItemMacro` out of that Item's Midi-QoL On Use Macro configuration. External Reaction calls the command itself at the configured pass. Registering it with Midi-QoL as well can cause duplicate or recursive execution when the macro launches an Activity from that Item.
+
+Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro at the `postActiveEffects` stage by default, as External Reaction’s configured default for a bare trigger. A bare `ItemMacro` with no pass extension therefore runs at `postActiveEffects`. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect. If the effect origin cannot be resolved, External Reaction searches the reactor Actor’s embedded Items for the Item containing the matching External Reaction Active Effect. Macro data is read from the serialized DAE/DIME `flags.dae.macro` first, then legacy Item Macro `flags.itemacro.macro`. The name/identifier/ID match against `NAME` remains a final fallback. Optional `getFlag` fallbacks are guarded because Foundry V14 may throw when a legacy flag scope is not registered or active.
+
+Choose a different stage in either of these equivalent ways:
+
+| Configuration | Example |
+|---|---|
+| Midi-style trigger value | `flags.external-reaction.optional.NAME.activity.trigger = "ItemMacro, postAttackRoll"` |
+| Separate field | `activity.trigger = itemMacro` and `activity.macroPass = postAttackRoll` |
+
+The trigger name is case-insensitive. The pass name is matched case-insensitively and normalized to Midi-QoL's canonical pass name. The default is `postActiveEffects`. An explicit `activity.macroPass` or `activity.pass` overrides the pass suffix in `activity.trigger`. Supported passes include `preItemRoll`, `preAttackRoll`, `preCheckHits`, `postAttackRoll`, `preDamageRoll`, `postDamageRoll`, `preSave`, `postSave`, `preActiveEffects`, `postActiveEffects`, plus later workflow-state passes such as `preWaitForAttackRoll`, `postAttackRollComplete`, and `preCleanup`. The dispatcher is installed at `preItemRoll`, so earlier passes cannot be guaranteed. The `preCheckHits`, `preDamageRoll`, and `preSave` options are dispatched through Midi-QoL's awaited hooks so an abort is handled before their respective next operations. `preSave` relies on Midi-QoL reaching `midi-qol.preCheckSaves` (normally when automatic save checking is enabled). The special `all` pass is intentionally not accepted because it would make a reaction eligible at many unrelated points in the same workflow.
+
+External Reaction awaits the configured Item Macro result at the selected pass. For the standard workflow-state passes, this wraps Midi-QoL's awaited `callMacros` dispatch; selected early stages use direct Midi-QoL hooks where the internal state method otherwise continues processing after its native macro pass. A cancellation aborts the remaining workflow where Midi-QoL supports that behavior. At `preActiveEffects`, External Reaction uses Midi-QoL's dedicated `{ haltEffectsApplication: true }` result contract; damage and earlier processing may already have happened. Not every documented Midi macro pass is enabled: `preAttackRollConfig`, `preDamageRollConfig`, `preDamageApplication`, and `damageBonus` are intentionally excluded because they are not reliable, general workflow-cancellation points in the targeted Midi-QoL source.
+
+For a reaction that must expend both the character's Reaction and a minimum spell slot, configure `count = reaction` and `countAlt = spellslot 3` (or reverse the two). Using only `count = spellslot 3` spends the slot but does not itself mark the character's Reaction as used.
+
+Activation conditions are checked immediately before the prompt at the configured stage. In the context, `actor` is the initiating actor (for Counterspell, the caster), `actor.range` is the reactor-to-initiator distance, `CanSee`/bare `canSee` describes the reactor seeing the initiating token, and flags such as `cast`/`attack` describe the initiating workflow.
+
+The Item Macro executes on the **selected reactor recipient's client**. For a player-owned reactor this is the active player who owns the Actor; for a GM-owned reactor or the module's GM fallback it is the GM client. The initiating workflow waits for the remote result, so any rolls and dialogs created by the macro (for example, `actor.rollAbilityCheck(...)`) are initiated on the reactor's client rather than on the initiating caster's client.
+
+The macro is executed in a nested async function scope. Its local `const` / `let` declarations may use names such as `data`, `externalReaction`, `actor`, `item`, and `workflow` without colliding with External Reaction's compatibility bindings.
+
+The macro receives the original context through `args[0]` and these additional values:
+
+- `externalReaction.trigger`: `type`, `eventFlags`, `phase` (the selected pass), `macroPass`, `workflowId`, `actorUuid`, `itemUuid`, `activityUuid`, `spellLevel`, `reactorUuid`, and `flagKey`.
+- `externalReaction.resource`: the first resource receipt, or `null`.
+- `externalReaction.resources`: an array of resource receipts.
+- Top-level aliases `resource`, `resources`, `reactor`, and `reactorToken` are also provided. The macro's `actor` / `reactor` is the reactor; `target` is the initiating token; `targetActor` is the initiating actor.
+- `workflow` is a **serializable snapshot** of selected initiating Workflow fields with supported Document references re-resolved on the reactor's client. It is not a live Midi-QoL Workflow instance: its methods cannot cross clients, and assigning to it does not mutate the original in-memory workflow. Use the returned-value contract to communicate the outcome to External Reaction.
+
+Remote execution uses a one-time authorization created when the reactor accepts the prompt. The socket handler checks the authenticated sender and expected recipient, revalidates the flag, and consumes the authorization before executing the user-authored macro to reject replayed requests.
+
+Supported Item Macro return values:
+
+| Return value | Meaning |
+|---|---|
+| `true`, `"cancel"`, or `{ action: "cancel" }` | Abort the remaining original Midi-QoL workflow. At `preItemRoll`, this prevents the original item use from proceeding; at later stages, earlier work remains. |
+| `0`, `false`, `null`, `undefined`, or `"continue"` | Continue the original workflow unchanged. |
+| An Activity UUID/reference string or Activity document | Use that Activity on the reactor's client, then continue the original workflow. |
+| `{ action: "activity", activityUuid: "...", cancelOriginal: true }` | Use the Activity, then abort the remaining original workflow. Omit `cancelOriginal` to continue it. |
+
+For example, a macro configured with `ItemMacro, postAttackRoll` can inspect `workflow.attackRoll`, `workflow.hitTargets`, and `workflow.hitTargetsEC`, perform any custom check, and return `"cancel"` to stop later workflow processing while keeping the attack roll and hit result visible. In Midi-QoL's current workflow sequence, the attack roll has been processed and hit/miss evaluation has been performed, but damage has not yet been rolled. `preCheckHits` is earlier: the attack roll exists, but hit adjudication has not completed. `postDamageRoll` runs after the damage roll exists; `preActiveEffects` can prevent later Active Effect application, and `postActiveEffects` is after Active Effects have already been applied.
+
+**Important: aborting is not rollback.** A later-stage cancellation never automatically erases earlier rolls or restores consumed resources/HP, and `postActiveEffects` cannot undo effects that have already been applied. Use the earliest pass that provides the information your macro needs. The exact stage behavior must be verified against the installed Midi-QoL version and each Activity type. `preItemRoll` runs before the initiating item's normal resource consumption; therefore, a rules-accurate 2014 Counterspell setup still needs a separately tested way to preserve the interrupted caster's spell-slot consumption. If the Item Macro launches a normal spell Activity that consumes a spell slot, verify that the same cast isn't charged twice and choose one owner for that payment.
+
+A spell-slot receipt has `type: "spellSlot"`, `pool` (`spell` or `pact`), `slotKey`, `level`, `amount`, `consumed`, `before`, `after`, and `resourcePath`. An ItemUses/ActivityUses receipt has `type: "itemUsage"`, `actorUuid`, `itemUuid`, optional `activityUuid`, `amount`, `consumed`, availability `before`/`after`, spent `beforeSpent`/`afterSpent`, and the resource path/count expression.
 
 Activity reference formats supported:
 
@@ -261,3 +313,25 @@ External Reaction follows the world setting **Midi-QoL → Debug** for browser-c
 | `Warnings` | Warnings (`console.warn`, yellow) and errors. |
 | `Debug` | Warnings, informational messages, debug messages, and errors. |
 | `All` | All of the above, plus verbose trace messages. |
+
+
+## Item Macro hook-only stages and early preItemRoll context
+
+The generic `Workflow.callMacros` pass name is compared in lowercase. The hook-only stage set must therefore use lowercase keys (`precheckhits`, `predamageroll`, `presave`). Otherwise, cancelling `preDamageRoll` from the generic On Use dispatcher can mark the Workflow aborted before Midi-QoL's actual cancellable pre-damage hook, while the damage-roll state continues into `rollDamage` and can show a Dice So Nice animation even if no damage card is produced.
+
+Midi-QoL may expose `preItemRoll` through legacy or V2 hook argument shapes. External Reaction normalizes both callback shapes, recursively searches nested hook arguments for the Workflow's `callMacro` helper, and supplements the early Workflow with Activity/Token/Item/Actor/target context when available. If no executable Workflow is present yet, the debug log describes the received arguments; no synthetic Workflow is created because macro execution and safe cancellation require Midi's live `callMacro` helper.
+
+
+## preItemRoll and postSave cancellation notes
+
+Midi-QoL V14 calls the legacy `midi-qol.preItemRoll` hook with positional arguments `(activity, token, config, dialog, message)`; the live Workflow is exposed as `config.workflow`. Its V2 hook passes `(workflow, usage, dialog, message)`. External Reaction handles both signatures and uses per-workflow pass deduplication to avoid a double prompt. A callback with incomplete actor/token context must not consume the pass as seen; a later callback may be the first one with a usable context.
+
+For `postSave`, the native Midi-QoL save-complete state invokes the `postSave` macro and ordinarily transitions to the state that processes damage details. Merely setting `workflow.aborted` in the callback does not reliably stop that transition. External Reaction wraps the instance save-complete state and returns `WorkflowState_Abort` after the native state code if the `postSave` pass was cancelled, preventing later damage processing.
+
+For `preDamageRoll`, External Reaction uses Midi-QoL's cancellable `midi-qol.preDamageRoll` hook; Midi-QoL's implementation returns before the core damage roll when the hook result is false. If a damage roll is still produced, obtain the runtime log because that would imply a separate or fallback roll path.
+
+## Nested Activity use and workflow cancellation
+
+When an Item Macro returns an Activity from the same embedded Item that stores its macro command, External Reaction uses a one-shot context to suppress that Item's ordinary native on-use ItemMacro for the nested Activity; this avoids recursively prompting the same reaction. Other macro calls and Activities from other Items are not intentionally suppressed. The user's existing target selection is restored after the triggered Activity use completes.
+
+At `preAttackRoll`, External Reaction marks the live workflow as aborted and does not return `false` from the hook. In Midi-QoL V14's `AttackActivity.rollAttack`, a `false` result from `configureAttackRoll` falls through to the core D&D 5e `rollAttack` implementation, so returning `false` would unexpectedly open the normal roll configurator. Cancellation at this stage prevents the remaining Midi-QoL roll path; later stages cannot roll back earlier work. The live Workflow is intercepted through `preTargetingV2` to cover non-attack Activities as well.

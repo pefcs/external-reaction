@@ -1,3 +1,18 @@
+# External Reaction v0.10.8 — Release verification
+
+**Target environment:** Foundry VTT 14.369 · D&D 5e 6.0.6 · Midi-QoL 14.6.4 · socketlib.
+
+The following end-to-end cases were verified in-world before promoting v0.10.8 from beta to stable. Other historical checklist sections below are regression cases and should still be exercised after relevant code or dependency changes.
+
+- [x] **Player reactor, GM initiates action:** the accepted Item Macro and its ability-check UI execute on the reactor player's client.
+- [x] **GM reactor, player initiates action:** the accepted Item Macro and its ability-check UI execute on the GM client when the reactor is GM-owned.
+- [x] **Counterspell equal/lower level:** a spell cast at a level equal to or lower than Counterspell's selected slot is cancelled without an ability check.
+- [x] **Counterspell higher level, successful check:** a successful spellcasting ability check against DC `10 + spell level` cancels the original cast.
+- [x] **Counterspell higher level, failed check:** a failed ability check allows the original cast to continue.
+- [x] **Roll result extraction:** the Item Macro reads the returned D&D 5e `D20Roll` total and can make the cancel/continue decision.
+- [x] **Independent local macro declarations:** Item Macros can declare local `const` bindings such as `data` and `externalReaction` without a duplicate-identifier SyntaxError.
+- [x] **Return-value contract:** `"cancel"` and `"continue"` return values correctly control the original workflow in the tested Counterspell cases.
+
 # External Reaction v0.9.5 — Regression, Logging, Spell-Slot Cost, and Triggered Activity Test Plan
 
 **Target environment:** Foundry VTT 14.369 · D&D 5e 6.0.6 · Midi-QoL 14.6.4 · socketlib enabled.
@@ -6,9 +21,65 @@ This is a regression-focused patch release on top of the v0.9.0 Activity-trigger
 
 > Test in a copy of your world. Static code/manifest/ZIP checks have been run; the regression cases below still require verification inside Foundry. v0.9.2 fixes triggered Activity target application for Foundry V14; v0.9.3 queues/deduplicates Activity triggers until all optional reaction prompts in the batch are resolved; v0.9.4 adds `spellslot X` count/countAlt support with an ordinary/Pact Magic slot selector and cancel-safe payment; v0.9.5 aligns console logging with Midi-QoL Debug and makes spell-slot dialog cancellation a silent opt-out.
 
+## Regression tests — v0.10.2 Item Macro source resolution
+
+Test in a disposable world. These checks cover Item Macro source resolution and macro-stage behavior. Re-run them after changes to the corresponding code or dependency versions.
+
+- [ ] A transferred External Reaction Active Effect on an Actor-owned Item whose macro is stored under `flags.dae.macro` is resolved and invoked.
+- [ ] A transferred External Reaction Active Effect is matched back to the embedded source Item by its effect changes even if `fromUuid(effect.origin)` does not return that Item.
+- [ ] An Item Macro stored under legacy `flags.itemacro.macro` still resolves and runs.
+- [ ] If an Item's legacy `itemacro` flag scope is not registered/active, Item Macro lookup does not throw or block workflow dispatch; DAE/DIME `flags.dae.macro` still resolves normally, and missing macros fail gracefully.
+- [ ] With `activation = cast`, a cantrip spell Activity triggers at the explicitly configured `preAttackRoll` stage; confirm the test dialog reports `preAttackRoll`.
+- [ ] With no External Reaction `itemMacro` optional configured, ordinary Activities still enter their normal workflow; the `midi-qol.preTargeting` dispatcher-installation hook must not abort item use.
+- [ ] A normal optional with an Activity UUID in `activity.trigger` still queues and uses that Activity as before.
+- [ ] `activity.trigger = itemMacro` with no pass dispatches at `postActiveEffects`, as External Reaction's configured default for a bare trigger. No prompt should appear before then.
+- [ ] `activity.trigger = "ItemMacro, postAttackRoll"` and the equivalent separate `activity.macroPass = postAttackRoll` both prompt only after the attack roll has been adjudicated.
+- [ ] At `postAttackRoll`, the macro sees the completed attack roll and known hit/miss result; if it returns `"cancel"`, the attack roll remains visible but the normal damage roll and later processing are aborted.
+- [ ] `preCheckHits` triggers after the attack roll but before hit adjudication; when cancelled, verify Midi-QoL doesn't proceed to hit evaluation or damage.
+- [ ] `postAttackRoll` triggers after hit/miss evaluation and before damage; when cancelled, the attack roll and result remain visible while damage is not rolled.
+- [ ] `preDamageRoll` triggers at Midi-QoL's awaited pre-damage hook; when cancelled, the damage roll does not happen. `postDamageRoll` triggers after the damage roll and cancels later processing.
+- [ ] `preSave` triggers through `midi-qol.preCheckSaves` when automatic save checking is enabled; when cancelled, verify save resolution doesn't continue.
+- [ ] `preActiveEffects` uses Midi-QoL's `haltEffectsApplication` contract to stop later Active Effect application; damage or other earlier processing may already have happened. `postActiveEffects` runs after effects have already been applied and must not be treated as rollback.
+- [ ] Invalid/unsupported stages such as `preDamageApplication`, `preAttackRollConfig`, `preDamageRollConfig`, and `damageBonus` are not treated as cancellation stages; confirm they are logged/skipped rather than running at an unsafe point.
+- [ ] Invalid/unknown pass names are skipped with a debug message; `all` is not accepted to avoid repeated reactions.
+- [ ] `activation = cast` matches spell items; `activation = attack` and `mwak`/`rwak`/`msak`/`rsak` match the appropriate activity type.
+- [ ] `activation = canSee && actor.range <= 60 && cast` rejects a caster that is invisible or out of range and offers only for a qualifying spell cast.
+- [ ] Accept with `count = spellslot 3`; verify the macro receives `externalReaction.resource.level`, slot pool, and before/after receipt.
+- [ ] For a reaction-cost case, use `count = reaction` and `countAlt = spellslot 3`; verify the reaction and spell slot are both consumed exactly once.
+- [ ] If the Item Macro launches a normal spell Activity, verify slot consumption occurs once—not once in External Reaction and again in the Activity.
+- [ ] Accept with `count = ItemUses.SomeFeature`; verify exactly one use is spent on the reactor's client and a matching `itemUsage` receipt reaches the macro.
+- [ ] Return `0`, `false`, or `continue`; the original action proceeds normally.
+- [ ] Return `true` or `cancel` at `preItemRoll`; the original item workflow is aborted before its normal resource consumption.
+- [ ] Return `cancel` at `postAttackRoll`; earlier attack roll and hit result remain visible, while later processing is aborted.
+- [ ] Return `cancel` at `preCheckHits`; confirm hit adjudication and damage are both prevented. Return `cancel` at `preDamageRoll`; confirm the damage roll is prevented.
+- [ ] Return an Activity UUID string; that Activity runs on the reactor's client and the original action continues.
+- [ ] Return `{ action: "activity", activityUuid: "...", cancelOriginal: true }`; the Activity runs and the original action is cancelled.
+- [ ] Confirm a flag with `activity.trigger = itemMacro` is not also processed as an ordinary roll-bonus/Activity-trigger option.
+- [ ] Confirm an Item Macro error, unresolved Activity, missing source Item, or missing Item Macro leaves the original workflow unchanged and logs a useful message.
+- [ ] **Counterspell 2014 resource caveat:** aborting at `preItemRoll` does not automatically spend the interrupted caster's slot. Test and configure the desired resource behavior separately; cancellation itself is not a rollback or resource-payment mechanism.
+- [ ] For later-stage cancellation, confirm resources and effects already consumed/applied by that stage are not assumed to be automatically restored.
+
+## Regression tests — 0.10.8 isolated Item Macro declaration scope
+
+- [ ] Use a macro that declares `const data = args[0] ?? {};` and `const externalReaction = data.externalReaction ?? {};`; confirm it executes without an `Identifier has already been declared` SyntaxError and reads the expected context.
+- [ ] Repeat with local declarations named `actor`, `item`, and `workflow`; confirm local declarations may safely shadow the outer compatibility bindings.
+- [ ] Verify top-level `return "cancel"`, `return "continue"`, an Activity UUID, and `return { action: "activity", activityUuid: "..." }` keep their existing result behavior after wrapping.
+
+## Regression tests — 0.10.7 reactor-client Item Macro execution
+
+- [ ] With a player-owned reactor and a different player/GM initiating the action, accept an ItemMacro reaction and confirm the macro's `game.user.id` is the reactor owner's ID.
+- [ ] Use a Counterspell ItemMacro that calls `actor.rollAbilityCheck()`; confirm any roll prompt and the roll are shown on the reactor owner's client, not the initiating caster's client.
+- [ ] Give the reactor Actor to the GM only; confirm the macro and any roll UI run on the GM client.
+- [ ] Temporarily disconnect/deactivate the reactor owner; confirm the GM fallback is selected and the execution is performed by the GM.
+- [ ] Confirm the macro receives `args[0].reactor`, `actor`, `item`, `token`, `target`, `targetActor`, `externalReaction.resources`, `initiatingActor`, `initiatingItem`, `initiatingActivity`, and `workflow.castData.castLevel` when available.
+- [ ] Return `"cancel"`, `"continue"`, and an Activity UUID from the ItemMacro; verify the original workflow behavior is unchanged except for the execution client.
+- [ ] Run a macro that returns a structured object such as `{ action: "activity", activityUuid: "...", cancelOriginal: true }` and verify it still resolves.
+- [ ] Confirm an ItemMacro with side effects on the reactor's client works; macros that rely on live methods of the initiating Midi-QoL Workflow or directly mutate its in-memory state may need to use the returned-value contract instead, because the remote context exposes a serializable workflow snapshot.
+- [ ] Test both `preItemRoll` and a later configured stage such as `postAttackRoll`; the originating workflow must remain paused until the recipient-side ItemMacro completes.
+
 ## 1. Preparation
 
-1. Back up the current world and install `external-reaction` v0.9.5 over the older copy. Fully reload Foundry after replacing the module.
+1. Back up the current world and install `external-reaction` v0.10.8 over the older copy. Fully reload Foundry after replacing the module.
 2. Confirm Foundry, D&D 5e, Midi-QoL, and socketlib are active and versions are as listed above.
 3. Put at least one actor with a token on the active scene as an external reactor and a separate token to perform the attack/save/check/damage workflow. Use player users when testing player-facing prompts/roll visibility; GM fallback is not a substitute for all roll-mode tests.
 4. Use a temporary Active Effect on the reactor with changes in Override mode. The flag suffixes below are relative to `flags.external-reaction.optional.TEST.`.
@@ -365,3 +436,38 @@ Create a reactor with at least one ordinary spell slot and, if possible, a Pact 
 - [ ] A single reactor + optional flag key + Activity reference accepted against multiple targets produces one Activity start per workflow batch.
 - [ ] Target selector / template placement does not appear while other optional reactions in that batch remain unresolved.
 - [ ] Triggered Activity can still start a nested workflow after the original reaction count locks have been released.
+
+
+## v0.10.5 Item Macro hook regression cases
+
+- [ ] Configure `ItemMacro, preItemRoll` on a spell attack. Confirm the reaction prompt triggers before attack/damage rolling. Continue proceeds; Cancel aborts before item rolling.
+- [ ] If `preItemRoll` does not prompt, capture the `preItemRoll hook fired, but no usable live Workflow` or `Dispatching preItemRoll interception` debug entry and subsequent External Reaction log lines.
+- [ ] Configure `ItemMacro, preDamageRoll` and choose Cancel. Verify the prompt runs from the real `midi-qol.preDamageRoll` hook and no Dice So Nice damage animation or damage roll occurs.
+- [ ] Retest `preCheckHits` and `preSave` with Continue / Cancel / Activity because v0.10.5 moves them to their dedicated-hook path.
+- [ ] Verify `postSave` Cancel still stops subsequent damage and `postDamageRoll` Cancel still prevents damage application.
+
+## v0.10.5 Item Macro hook regression cases
+
+- [ ] Configure `ItemMacro, preItemRoll` on a spell attack. Confirm the reaction prompt triggers before attack/damage rolling. Continue proceeds; Cancel aborts before item rolling.
+- [ ] If `preItemRoll` does not prompt, capture the `preItemRoll hook fired, but no usable live Workflow` or `Dispatching preItemRoll interception` debug entry and subsequent External Reaction log lines.
+- [ ] Configure `ItemMacro, preDamageRoll` and choose Cancel. Verify the prompt runs from the real `midi-qol.preDamageRoll` hook and no Dice So Nice damage animation or damage roll occurs.
+- [ ] Retest `preCheckHits` and `preSave` with Continue / Cancel / Activity because v0.10.5 moves them to their dedicated-hook path.
+- [ ] Verify `postSave` Cancel still stops subsequent damage and `postDamageRoll` Cancel still prevents damage application.
+
+## v0.10.4 preItemRoll and postSave regression cases
+
+- [ ] Configure `ItemMacro, preItemRoll`, cast a spell with the eligible reactor on the scene, and verify the reaction prompt appears before attack/save/damage rolling and before normal resource consumption.
+- [ ] At `preItemRoll`, choose Continue and verify the original workflow proceeds; choose Cancel and verify the original item use is aborted before its roll.
+- [ ] Configure `ItemMacro, postSave` on a save-and-damage spell. Choose Cancel after the saving throw result is determined; the save result may remain, but no subsequent damage should be rolled or applied.
+- [ ] Configure `ItemMacro, preDamageRoll`. Choose Cancel and record whether a damage roll card/configurator is created. The intended result is that Midi-QoL's pre-damage hook blocks the roll itself and no damage is applied. If any roll is still created, preserve the console log from the reaction prompt through the end of the workflow for diagnosis.
+- [ ] For an External Reaction-owned Item Macro, verify the command is stored on the source Item but `ItemMacro` is **not** assigned to any Midi-QoL On Use Macro stage on that Item. The reaction macro should run only through External Reaction; no duplicate/recursive call should occur.
+
+## v0.10.3 workflow interception regression cases
+
+- [ ] Configure `ItemMacro, preAttackRoll`, choose Cancel, and verify no Foundry/D&D 5e attack configurator opens and no attack roll/chat roll is produced.
+- [ ] Configure `ItemMacro, preAttackRoll`, choose Continue, and verify the original attack proceeds against its original target.
+- [ ] Choose Activity where the Activity belongs to the same Item that stores the Item Macro. Verify its native `postActiveEffects` ItemMacro does not re-open the reaction test dialog.
+- [ ] After the triggered Activity finishes, verify the original user's targets are restored and the original attack still targets its original target.
+- [ ] Repeat the Activity case with an Activity on a different Item; verify its own ItemMacro is not suppressed accidentally.
+
+> Static checks do not replace the Foundry runtime tests above. In particular, cancellation and the same-Item Activity path require an in-world check on the target Midi-QoL version.
