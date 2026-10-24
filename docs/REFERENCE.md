@@ -77,7 +77,10 @@ Activation-condition context:
 - For convenience, a leading negation on a disposition equality is normalized as a negated comparison: `!actor.disposition == "hostile"` is treated as `actor.disposition != "hostile"`, and `!target.disposition != "friendly"` as `target.disposition == "friendly"`. This is a custom convenience syntax; in standard JavaScript, `!` would bind before `==`. You can always use the conventional `!=` or `!(actor.disposition == "hostile")` forms. Direct `==`/`!=` comparisons use JavaScript coercion; strict `===`/`!==` comparisons are normalized to compare the wrapper’s underlying `.value` string.
 - `friendly` and `enemy` are booleans comparing the reactor with the action target. Neutral and Secret are treated as friendly; missing disposition defaults to Friendly. Use `actorFriendly` / `actorEnemy` when you need to compare the reactor's disposition to the initiating actor instead.
 - `CanSee` reports whether the reactor can see the action target, using Midi-QoL's `canSee` with `forceVision: true`. If either token is unavailable or visibility cannot be determined, `CanSee` is false.
-- `range` is the numeric distance between the reactor token and the action `target` token, calculated with Midi-QoL's `getDistance` helper. It follows Midi-QoL's measurement mode and scene distance units. It does not apply wall blocking; combine it with `CanSee` when line of sight matters. If a referenced token is unavailable or distance cannot be measured, an activation condition referencing `range` is rejected rather than treating it as zero.
+- `range` is the numeric distance between the reactor token and the action `target` token (legacy behavior), calculated with Midi-QoL's `getDistance` helper. It follows Midi-QoL's measurement mode and scene distance units. It does not apply wall blocking; combine it with `CanSee` when line of sight matters.
+- `actor.range` is the distance between the reactor token and the initiating `actor` token (for example, the attacker or caster). Use it when the reaction's range should be measured to whoever started the workflow.
+- `target.range` is the distance between the reactor token and the action `target` token. This is equivalent to the legacy bare `range` value, but is explicit and can be combined with `actor.range` in the same condition.
+- Each range is measured independently. If a condition references a range whose required token is unavailable or whose distance cannot be measured, the activation condition is rejected rather than allowing JavaScript to compare an unavailable value as zero. All ranges use Midi-QoL's configured measurement behavior and do not independently account for walls; combine with `CanSee` when line of sight matters.
 - Midi-QoL's built-in activation-condition helpers are available, including helpers such as `canSee(token, target)`, `canSense`, `findNearby`, `findNearbyCount`, `checkNearby`, `hasCondition`, `checkDefeated`, `checkIncapacitated`, `getDistance`, `computeDistance`, `checkDistance`, `checkActivityRange`, `fromUuidSync`, and `sizeNumeric`, plus helpers supplied by the installed Midi-QoL build.
 - Module flags and roll data accessible to the evaluator can be referenced. Arbitrary global functions from another module are not automatically imported: they must be exposed to Midi-QoL's activation evaluator or available through the supplied data, just as with Midi-QoL conditions generally.
 
@@ -95,6 +98,11 @@ Examples (set as the value of `flags.external-reaction.optional.NAME.activation`
 | `range == 40` | Distance to the action target is exactly 40 scene units |
 | `friendly && range <= 40 && CanSee` | Target is friendly, within range, and visible |
 | `range > 5 && range <= 60` | Distance to the action target is greater than 5 and at most 60 scene units |
+| `actor.range <= 30` | Reactor is within 30 scene units of the initiating actor (such as the attacker or caster) |
+| `target.range <= 30` | Reactor is within 30 scene units of the action target; explicit equivalent of `range <= 30` |
+| `actor.range <= 30 && target.range <= 10` | Initiating actor is within 30 units and the action target is within 10 units of the reactor |
+| `actor.range < target.range` | Initiating actor is closer to the reactor than the action target is |
+| `actor.range <= 60 && target.range <= 30 && CanSee` | Both actors are within their respective limits and the reactor can see the action target |
 | `target.disposition.in('hostile', 'secret')` | Target has a Hostile or Secret disposition |
 | `actor.disposition.in('friendly', 'neutral')` | The initiating actor has Friendly or Neutral disposition |
 | `actor.disposition == "hostile"` | The initiating actor is Hostile (loose equality) |
