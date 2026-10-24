@@ -11,7 +11,7 @@ Core reaction functionality includes:
 - Saving throw values: `save.all`, `save.{ability}`, `save.fail.*`, and `save.success.*`.
 - Ability-check values: `check.all`, `check.{ability}`, `check.fail.*`, and `check.success.*` when a numeric DC is available.
 - Skill values: `skill.all`, `skill.{skill}`, `skill.fail.all`, `skill.fail.{skill}`, and External Reaction's `skill.success.all` / `skill.success.{skill}` when a numeric DC is available.
-- Damage bonuses: `damage.{actionType}` or `damage.all` following Midi-QoL-style priority, plus typed damage selectors `damage.{damageType}.all` and `damage.{damageType}.{attackType}` to add a separate typed damage roll. The older `damage.{damageType}` path remains backward-compatible.
+- Damage bonuses: `damage.{actionType}` or `damage.all` following Midi-QoL-style priority, plus typed damage selectors `damage.{damageType}.all` and `damage.{damageType}.{attackType}` to add a separate typed damage roll.
 - AC bonuses: `ac` on the attacked/receiving actor, applied before Midi-QoL adjudicates attack hits; it does not automatically spend a reaction unless `count` / `countAlt` explicitly requests `reaction`.
 - Optional roll controls: `criticalDamage`, `displayBonusRolls`, and `rollMode` are honored for the relevant bonus workflow.
 - Roll values: numeric/dice formulas, `reroll`, `reroll-query`, `reroll-kh`, `reroll-kl`, `reroll-max`, `reroll-min`, `reroll-withBonus {expr}`, `replace {formula}`, `success`, `fail`, `critical`, `ItemMacro`, `ItemMacro.{name}`, `ItemMacro.{itemUuid}`, `Macro.{name}`, and `function.{name}`. `ActivityMacro` remains intentionally unsupported.
@@ -20,8 +20,7 @@ Core reaction functionality includes:
 - **Triggered Activity batching:** accepting an option queues its Activity until the current attack/save/check/skill/damage/AC reaction batch has finished. The queue deduplicates the same reactor + option key + Activity, preventing repeated target selectors for each accepted count across an AOE.
 - Count availability/consumption: numeric counts, `each-turn`, `each-round`, `turn`, `reaction`, `bonusAction`, `every`, ItemUses, ActivityUses, `@system.path`, and the new `spellslot X` format for an interactively selected spell slot of level X or higher, including Pact Magic.
 - **Count concurrency protection:** each optional reaction re-checks the current granting Active Effect and resource state immediately before prompting/applying; per-reactor processing is serialized so multi-target saves cannot reuse the same reaction or item use across parallel target results.
-- **Actor identity handling:** self-owned save/check/skill options are no longer excluded before activation evaluation. `actor == self` / `target == self` and their inverse conditions determine eligibility; the same Actor is still blocked from reacting to its own outgoing attack, damage, or AC workflow.
-- Long, short, and default button labels with vertical full-width button layout; modified save/check roll cards are synchronized.
+- **Actor identity handling:** self-owned save/check/skill/ac options are no longer excluded before activation evaluation. `actor == self` / `target == self` and their inverse conditions determine eligibility; the same Actor is still blocked from reacting to its own outgoing attack or damage workflow.
 
 ### Skill bonuses
 
@@ -40,22 +39,11 @@ The supported D&D 5e skill IDs are `acr`, `ani`, `arc`, `ath`, `dec`, `his`, `in
 
 For normal Midi-QoL-style action-specific damage modifiers use `flags.external-reaction.optional.NAME.damage.{attackType}` or `...damage.all`. Attack-type IDs are `mwak`, `rwak`, `msak`, `rsak`, `heal`, `other`, `save`, and `util`. The action-specific path wins when present; otherwise `damage.all` is used.
 
-External Reaction supports damage-type paths in the form `flags.external-reaction.optional.NAME.damage.{damageType}.all` and `...damage.{damageType}.{attackType}`. The value is rolled as a separate `DamageRoll` with the selected damage type rather than being added as untyped damage. For example, `damage.fire.all = 1d6` adds Fire damage for any supported damage action, while `damage.fire.mwak = 1d6` adds Fire damage only for a melee weapon attack. Supported nested action-type suffixes are `mwak`, `rwak`, `msak`, `rsak`, `other`, `save`, and `util`; `heal` is intentionally not supported as a suffix under a damage type. Common damage IDs are Acid (`acid`), Bludgeoning (`bludgeoning`), Cold (`cold`), Fire (`fire`), Force (`force`), Lightning (`lightning`), Necrotic (`necrotic`), Piercing (`piercing`), Poison (`poison`), Psychic (`psychic`), Radiant (`radiant`), Slashing (`slashing`), and Thunder (`thunder`). The module also recognizes configured non-standard types such as Vitality and Maximum Hit Points (`maximum`, with `mhp` accepted as an alias) where supported by D&D 5e or another module. Use `damage.none.all` or `damage.none.{attackType}` for untyped damage (No type). “No damage” (`midi-none`) is excluded because it does not represent a damage roll. The previous `damage.fire` style remains supported for existing effects, but new effects should use `damage.fire.all` or an action-specific nested path.
+External Reaction supports damage-type paths in the form `flags.external-reaction.optional.NAME.damage.{damageType}.all` and `...damage.{damageType}.{attackType}`. The value is rolled as a separate `DamageRoll` with the selected damage type rather than being added as untyped damage. For example, `damage.fire.all = 1d6` adds Fire damage for any supported damage action, while `damage.fire.mwak = 1d6` adds Fire damage only for a melee weapon attack. Supported nested action-type suffixes are `mwak`, `rwak`, `msak`, `rsak`, `other`, `save`, and `util`; `heal` is intentionally not supported as a suffix under a damage type. Common damage IDs are Acid (`acid`), Bludgeoning (`bludgeoning`), Cold (`cold`), Fire (`fire`), Force (`force`), Lightning (`lightning`), Necrotic (`necrotic`), Piercing (`piercing`), Poison (`poison`), Psychic (`psychic`), Radiant (`radiant`), Slashing (`slashing`), and Thunder (`thunder`). The module also recognizes configured non-standard types such as Vitality and Maximum Hit Points (`maximum`, with `mhp` accepted as an alias) where supported by D&D 5e or another module. Use `damage.none.all` or `damage.none.{attackType}` for untyped damage (No type). “No damage” (`midi-none`) is excluded because it does not represent a damage roll.
 
-Damage-type IDs are resolved from the installed system's `CONFIG.DND5E.damageTypes` and `healingTypes`, with common fallbacks. To verify exact IDs in a world, run this in the browser console:
+Damage-type IDs are resolved from the installed system's `CONFIG.DND5E.damageTypes` and `healingTypes`, with common fallbacks.
 
-```js
-console.table(Object.entries(CONFIG.DND5E?.damageTypes ?? {}).map(([id, data]) => ({
-  id,
-  label: game.i18n.localize(data.label ?? data.name ?? id)
-})));
-console.table(Object.entries(CONFIG.DND5E?.healingTypes ?? {}).map(([id, data]) => ({
-  id,
-  label: game.i18n.localize(data.label ?? data.name ?? id)
-})));
-```
-
-One optional `NAME` group selects one damage path per damage-roll pass. Priority is: a typed action-specific path such as `damage.fire.mwak`; the general action-specific path such as `damage.mwak`; a typed `.all` path such as `damage.fire.all`; the general `damage.all` path; then a legacy primitive typed path such as `damage.fire`. If multiple damage-type subgroups match, the first matching type in the actor flag data is selected. Use separate `NAME` groups if you want multiple bonus options to be independently offered from the same damage pass. Typed damage selectors are intended for damage formulas (`1d6`, `+1d4`, `replace 2d6`, or a macro returning a roll/formula); roll-control values that need an existing roll to reroll are not meaningful as standalone typed damage additions.
+One optional `NAME` group selects one damage path per damage-roll pass. Priority is: a typed action-specific path such as `damage.fire.mwak`; the general action-specific path such as `damage.mwak`; a typed `.all` path such as `damage.fire.all`; the general `damage.all` path. If multiple damage-type subgroups match, the first matching type in the actor flag data is selected. Use separate `NAME` groups if you want multiple bonus options to be independently offered from the same damage pass. Typed damage selectors are intended for damage formulas (`1d6`, `+1d4`, `replace 2d6`, or a macro returning a roll/formula); roll-control values that need an existing roll to reroll are not meaningful as standalone typed damage additions.
 
 ### AC bonus
 
@@ -137,9 +125,7 @@ External Reaction supports direct comparisons between the activation-context act
 
 These comparisons identify the Actor document, not a specific token. Two tokens linked to the same Actor therefore compare as the same Actor.
 
-The old `friendly` / `enemy` suffix on roll values (for example `+1d4 enemy`) remains as a backward-compatibility feature, but **new configurations should use `activation`** so disposition can be combined with other conditions. If both are used, both filters must pass.
-
-Midi-QoL's optional dialog uses `errorReturn: true` for activation-expression evaluation. External Reaction follows that behavior: if an expression errors, Midi logs the issue and its evaluator's permissive fallback can allow the option. Check the console when testing new expressions.
+Midi-QoL's optional dialog uses `errorReturn: true` for activation-expression evaluation. External Reaction follows that behavior: if an expression errors, Midi logs the issue and its evaluator's permissive fallback can allow the option.
 
 ## Actor item possession conditions
 
@@ -170,11 +156,11 @@ Use JavaScript comparison operators such as `==`, `===`, `<`, `<=`, `>`, and `>=
 
 ### Triggered Activities
 
-Add this Active Effect change to the same `flags.external-reaction.optional.NAME.*` group as the reaction's attack/save/check/skill/damage/AC option:
+Add this Active Effect change to the same `flags.external-reaction.optional.NAME.*` group as the reaction's attack/save/check/skill/damage/AC/activity.trigger option:
 
 | Active Effect change key | Example value |
 |---|---|
-| `activity.trigger` | `Actor.abc123.Item.def456.Activity.ghi789` |
+| `flags.external-reaction.optional.NAME.activity.trigger` | `Actor.abc123.Item.def456.Activity.ghi789` |
 
 The trigger runs **after the reactor accepts** the optional-reaction prompt. It runs on the reactor's owning user's client (or the GM fallback), then the original optional bonus/reaction continues through its existing processing. If the player cancels the triggered Activity's target selector, the triggered Activity is skipped but the already-accepted optional bonus still resolves.
 
@@ -248,7 +234,6 @@ Within one optional `NAME` group, one selector is chosen in this order: `<attack
 - `function.{name}` must refer to a function registered in Midi-QoL's macro system. It is not a way to call arbitrary browser globals.
 - The module integrates with Midi-QoL workflow functions and D&D 5e roll methods that are not stable public extension APIs. Future Foundry, D&D 5e, or Midi-QoL updates may require compatibility changes.
 - Damage bonuses are processed after Midi-QoL's own damage bonus flags. Each optional flag group selects one matching damage path per damage pass. Use separate optional names for independently selectable bonuses.
-- AC reactions and other workflow-sensitive features should be validated in a test world after major Foundry, D&D 5e, or Midi-QoL upgrades. Static checks do not replace in-world testing.
 
 ## Setup and testing
 
@@ -268,5 +253,3 @@ External Reaction follows the world setting **Midi-QoL → Debug** for browser-c
 | `Warnings` | Warnings (`console.warn`, yellow) and errors. |
 | `Debug` | Warnings, informational messages, debug messages, and errors. |
 | `All` | All of the above, plus verbose trace messages. |
-
-Cancelling or closing the spell-slot selector is an intentional opt-out: no slot is spent, the optional roll effect is not applied, and no linked Activity is queued. It does not create an on-screen warning. At `Warnings`, `Debug`, or `All`, the cancellation is recorded in the console. A slot that genuinely becomes unavailable after selection is a separate resource-availability issue and may show a warning.
