@@ -11,7 +11,7 @@ This document is a practical catalogue of Active Effect change examples for Exte
 - Add each row as its own Active Effect change. A group can contain multiple trigger flags plus one of each settings such as `count`, `activation`, `rollMode`, and `displayBonusRolls`.
 - Unless otherwise noted, formulas are examples and should be adjusted to suit the feature/item. Confirm the exact change key and value in a disposable world before using them in a live campaign.
 
-## 1. Attack-roll bonuses
+## 1. Attack-roll numeric bonuses
 
 | Flag | Type | Value |
 |---|---|---|
@@ -33,11 +33,11 @@ This document is a practical catalogue of Active Effect change examples for Exte
 
 **Attack type IDs:** `mwak` (melee weapon), `rwak` (ranged weapon), `msak` (melee spell), and `rsak` (ranged spell). Success-only attack selectors are supported for these four attack types.
 
-## 2. Saving-throw bonuses
+## 2. Saving-throw numeric bonuses
 
 | Flag | Type | Value |
 |---|---|---|
-| `flags.external-reaction.optional.NAME.save.all` | Override | `1d4` — Offer +1d4 on any supported saving throw. |
+| `flags.external-reaction.optional.NAME.save.all` | Override | `+1` — Offer +1 on any supported saving throw. |
 | `flags.external-reaction.optional.NAME.save.str` | Override | `1d4` — Offer +1d4 on Strength saves. |
 | `flags.external-reaction.optional.NAME.save.dex` | Override | `1d4` — Offer +1d4 on Dexterity saves. |
 | `flags.external-reaction.optional.NAME.save.con` | Override | `1d4` — Offer +1d4 on Constitution saves. |
@@ -51,13 +51,13 @@ This document is a practical catalogue of Active Effect change examples for Exte
 | `flags.external-reaction.optional.NAME.save.success.wis` | Override | `1d4` — Success-phase option for Wisdom saves. |
 | `flags.external-reaction.optional.NAME.save.success.cha` | Override | `1d4` — Success-phase option for Charisma saves. |
 
-## 3. Ability-check bonuses
+## 3. Ability-check numeric bonuses
 
 Fail/success-specific check selectors require a numeric DC to be available to the workflow. If the roll has no DC, use the ordinary `check.*` selectors.
 
 | Flag | Type | Value |
 |---|---|---|
-| `flags.external-reaction.optional.NAME.check.all` | Override | `1d4` — Offer +1d4 on any supported ability check. |
+| `flags.external-reaction.optional.NAME.check.all` | Override | `+1` — Offer +1 on any supported ability check. |
 | `flags.external-reaction.optional.NAME.check.str` | Override | `1d4` — Strength checks, such as forcing a door. |
 | `flags.external-reaction.optional.NAME.check.dex` | Override | `1d4` — Dexterity checks, such as balancing or escaping a restraint. |
 | `flags.external-reaction.optional.NAME.check.con` | Override | `1d4` — Constitution checks. |
@@ -70,13 +70,13 @@ Fail/success-specific check selectors require a numeric DC to be available to th
 | `flags.external-reaction.optional.NAME.check.success.all` | Override | `1d4` — Offer a bonus after a check succeeds against a known DC. |
 | `flags.external-reaction.optional.NAME.check.success.wis` | Override | `1d4` — Success-phase option for Wisdom checks. |
 
-## 4. Skill-check bonuses
+## 4. Skill-check numeric bonuses
 
 Skill IDs are D&D 5e identifiers, not the displayed skill names. Fail/success-specific selectors require a numeric DC.
 
 | Flag | Type | Value |
 |---|---|---|
-| `flags.external-reaction.optional.NAME.skill.all` | Override | `1d4` — Offer +1d4 on any supported skill check. |
+| `flags.external-reaction.optional.NAME.skill.all` | Override | `+1` — Offer +1 on any supported skill check. |
 | `flags.external-reaction.optional.NAME.skill.acr` | Override | `1d4` — Acrobatics (`acr`). |
 | `flags.external-reaction.optional.NAME.skill.ani` | Override | `1d4` — Animal Handling (`ani`). |
 | `flags.external-reaction.optional.NAME.skill.arc` | Override | `1d4` — Arcana (`arc`). |
@@ -109,7 +109,7 @@ For untyped/action-specific bonuses, the action-specific selector takes priority
 
 | Flag | Type | Value |
 |---|---|---|
-| `flags.external-reaction.optional.NAME.damage.all` | Override | `1d4` — Add an untyped 1d4 to a supported damage roll. |
+| `flags.external-reaction.optional.NAME.damage.all` | Override | `+1` — Add an untyped +1 to a supported damage roll. |
 | `flags.external-reaction.optional.NAME.damage.mwak` | Override | `1d6` — Add untyped 1d6 to melee weapon attack damage. |
 | `flags.external-reaction.optional.NAME.damage.rwak` | Override | `1d6` — Add untyped 1d6 to ranged weapon attack damage. |
 | `flags.external-reaction.optional.NAME.damage.msak` | Override | `1d8` — Add untyped 1d8 to melee spell attack damage. |
@@ -212,8 +212,8 @@ The count fields control availability and resource consumption. Add them to the 
 | `flags.external-reaction.optional.NAME.count` | Override | `reaction` — Require and consume the Actor's reaction through Midi-QoL's reaction tracking. |
 | `flags.external-reaction.optional.NAME.count` | Override | `bonusAction` — Use Midi-QoL's bonus-action resource tracking. |
 | `flags.external-reaction.optional.NAME.count` | Override | `every` — Test/development setting that does not impose a normal limited-use count; useful for repeatable tests. |
-| `flags.external-reaction.optional.NAME.count` | Override | `ItemUses` — Use the relevant item's available uses as the count resource. |
-| `flags.external-reaction.optional.NAME.count` | Override | `ActivityUses` — Use the relevant Activity's available uses as the count resource. |
+| `flags.external-reaction.optional.NAME.count` | Override | `ItemUses.{itemName}` — Use the relevant item's available uses as the count resource. (e.g.: ItemUses.Bardic Inspiration) |
+| `flags.external-reaction.optional.NAME.count` | Override | `ActivityUses.{itemName}.{activityName}` — Use the relevant Activity's available uses as the count resource. (e.g.: ActivityUses.Bardic Inspiration.Sing Song) |
 | `flags.external-reaction.optional.NAME.count` | Override | `@system.uses.value` — Read a count from a system data path; replace the example path with a valid path for the intended Actor/item data. |
 | `flags.external-reaction.optional.NAME.count` | Override | `spellslot 1` — Require the player to select and spend an available spell slot of level 1 or higher. |
 | `flags.external-reaction.optional.NAME.count` | Override | `spellslot 3` — Require and spend an available ordinary or Pact Magic slot of level 3 or higher. |
@@ -290,7 +290,7 @@ The following are small recipes. Each row is still a separate Active Effect chan
 | Flag | Type | Value |
 |---|---|---|
 | `flags.external-reaction.optional.Blessing.save.fail.all` | Override | `1d4` — Add 1d4 to an initially failed save. |
-| `flags.external-reaction.optional.Blessing.activation` | Override | `friendly && CanSee && range <= 30` — Only offer it to a visible friendly target within 30 units. |
+| `flags.external-reaction.optional.Blessing.activation` | Override | `target.disposition == friendly && CanSee && range <= 30` — Only offer it to a visible friendly target within 30 units. |
 | `flags.external-reaction.optional.Blessing.count` | Override | `reaction` — Spend the helper's reaction. |
 | `flags.external-reaction.optional.Blessing.displayBonusRolls` | Override | `true` — Show the roll change. |
 
@@ -303,13 +303,13 @@ The following are small recipes. Each row is still a separate Active Effect chan
 | `flags.external-reaction.optional.Shield.count` | Override | `reaction` — Spend the character's reaction. |
 | `flags.external-reaction.optional.Shield.rollMode` | Override | `publicroll` — Use public roll visibility for the option's roll message. |
 
-### Example C — Fire-infused melee damage
+### Example C — Fire-infused melee damage for another actor
 
 | Flag | Type | Value |
 |---|---|---|
 | `flags.external-reaction.optional.FireBrand.damage.fire.mwak` | Override | `1d6` — Add a separate 1d6 Fire damage roll to a melee weapon attack. |
 | `flags.external-reaction.optional.FireBrand.count` | Override | `each-turn` — Use the per-turn count behavior. |
-| `flags.external-reaction.optional.FireBrand.activation` | Override | `enemy && CanSee` — Require a visible enemy target. |
+| `flags.external-reaction.optional.FireBrand.activation` | Override | `target.disposition == enemy && CanSee` — Require a visible enemy target. |
 | `flags.external-reaction.optional.FireBrand.criticalDamage` | Override | `true` — Use the special configured=false behavior for the bonus damage roll. |
 
 ### Example D — Trigger an embedded Activity after an accepted reaction
@@ -327,7 +327,15 @@ The following are small recipes. Each row is still a separate Active Effect chan
 |---|---|---|
 | `flags.external-reaction.optional.ArcaneBoost.save.all` | Override | `1d4` — Offer +1d4 on a saving throw. |
 | `flags.external-reaction.optional.ArcaneBoost.count` | Override | `spellslot 2` — Require and spend a selected spell slot of level 2 or higher. |
-| `flags.external-reaction.optional.ArcaneBoost.activation` | Override | `friendly && CanSee` — Restrict to a visible friendly target. |
+| `flags.external-reaction.optional.ArcaneBoost.activation` | Override | `target.disposition == friendly && CanSee` — Restrict to a visible friendly target. |
+
+### Example F — Force reroll an enemy actor's ranged weapon attack hit per turn
+
+| Flag | Type | Value |
+|---|---|---|
+| `flags.external-reaction.optional.ArcaneBoost.attack.success.rwak` | Override | `reroll` — Reroll the Attack roll. |
+| `flags.external-reaction.optional.ArcaneBoost.count` | Override | `every-turn` — Once per turn. |
+| `flags.external-reaction.optional.ArcaneBoost.activation` | Override | `actor.disposition == hostile && CanSee` — Restrict to a visible enemy actor. |
 
 ## Important behavior notes
 
