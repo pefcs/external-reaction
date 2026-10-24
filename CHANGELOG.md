@@ -1,6 +1,9 @@
 # Changelog
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
+## 0.9.8
+
+- Some more examples in FLAG-VALUE-EXAMPLES.md
 
 ## 0.9.7
 
