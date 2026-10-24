@@ -4,12 +4,14 @@ External Reaction extends Midi-QoL-style optional roll bonuses so a creature on 
 
 The module is designed for **Foundry Virtual Tabletop V14**, **D&D 5e 6.0.6+**, **Midi-QoL**, and **socketlib**.
 
-## Development version 0.10.5
+## Development version 0.10.6
 
 This development build adds workflow-event activation flags (`cast`, `attack`, attack types, saves/checks/skills and related activity flags), an `activity.trigger = itemMacro` interception path with configurable Midi-QoL macro passes, and structured resource receipts for selected spell slots and ItemUses/ActivityUses counts. Item Macros can continue the original workflow, abort its remaining stages, or request another Activity.
 
 
 **Version 0.10.2 Item Macro source fix:** the prior beta could not locate the transferred effect's source Item in some cases and only read the legacy `flags.itemacro.macro` field. This build also searches the reactor Actor's embedded Items for the Item containing the matching External Reaction Active Effect and reads DAE/DIME `flags.dae.macro` before falling back to `flags.itemacro.macro`.
+
+**Version 0.10.6 resolver guard:** macro lookup reads the serialized DAE/DIME and legacy Item Macro flags first and catches failures from optional `getFlag` lookups. Foundry V14 can throw when the legacy `itemacro` flag scope is not registered or active; that condition must no longer prevent External Reaction from dispatching `preSave` or other Item Macro stages.
 
 **Version 0.10.5 stage fixes:** corrected the hook-only pass list so `preCheckHits`, `preDamageRoll`, and `preSave` are dispatched only from their dedicated awaited Midi-QoL hooks rather than prematurely from the generic On Use dispatcher. `preItemRoll` now accepts and normalizes both legacy and V2 hook argument shapes, using the hook's Activity/Token context if Workflow convenience fields are not populated yet. It also emits a diagnostic when the hook fires without an executable live Workflow.
 
