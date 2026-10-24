@@ -2,6 +2,12 @@
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
 
+## 0.10.1 — development regression fix
+
+- Fixed the `midi-qol.preTargeting` listener so the dispatcher's internal boolean is not returned to Midi-QoL. A `false` return from that hook aborts item usage, which could make every action appear cancelled when no Item Macro reaction was configured.
+- Changed the default for a bare `ItemMacro` trigger from `preItemRoll` to `postActiveEffects`, matching Midi-QoL's traditional default OnUse macro pass. Explicit pass suffixes and `activity.macroPass` / `activity.pass` still override the default.
+- Added regression checklist coverage for ordinary actions with no matching External Reaction optional.
+
 ## 0.10.0 — development build
 
 - Added configurable Midi-QoL Item Macro workflow passes, including `postAttackRoll`, with stage-aware cancellation; aborting does not roll back earlier work.
