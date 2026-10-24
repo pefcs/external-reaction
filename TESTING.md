@@ -406,6 +406,8 @@ Create a reactor with at least one ordinary spell slot and, if possible, a Pact 
 
 ## v0.10.3 workflow interception regression cases
 
+- [ ] For an External Reaction-owned Item Macro, verify the command is stored on the source Item but `ItemMacro` is **not** assigned to any Midi-QoL On Use Macro stage on that Item. The reaction macro should run only through External Reaction; no duplicate/recursive call should occur.
+
 - [ ] Configure `ItemMacro, preAttackRoll`, choose Cancel, and verify no Foundry/D&D 5e attack configurator opens and no attack roll/chat roll is produced.
 - [ ] Configure `ItemMacro, preAttackRoll`, choose Continue, and verify the original attack proceeds against its original target.
 - [ ] Choose Activity where the Activity belongs to the same Item that stores the Item Macro. Verify its native `postActiveEffects` ItemMacro does not re-open the reaction test dialog.
