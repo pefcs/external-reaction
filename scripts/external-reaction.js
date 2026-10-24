@@ -809,9 +809,9 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
   const targetRange = getExternalActivationRange(midi, reactorToken, targetToken);
   const actorRange = getExternalActivationRange(midi, reactorToken, actionActorToken);
   const expressionText = String(expression);
-  const usesBareRange = /(?<![.\\w])range\\b/i.test(expressionText);
-  const usesActorRange = /\\bactor\\s*\\.\\s*range\\b/i.test(expressionText);
-  const usesTargetRange = /\\btarget\\s*\\.\\s*range\\b/i.test(expressionText);
+  const usesBareRange = /(?<![.\w])range\b/i.test(expressionText);
+  const usesActorRange = /\bactor\s*\.\s*range\b/i.test(expressionText);
+  const usesTargetRange = /\btarget\s*\.\s*range\b/i.test(expressionText);
   // Avoid JS's coercion of undefined in comparisons when a referenced token distance
   // is unavailable. Only require the specific distance(s) the expression actually uses.
   if ((usesBareRange && !Number.isFinite(targetRange))
