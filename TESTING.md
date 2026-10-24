@@ -6,10 +6,14 @@ This is a regression-focused patch release on top of the v0.9.0 Activity-trigger
 
 > Test in a copy of your world. Static code/manifest/ZIP checks have been run; the regression cases below still require verification inside Foundry. v0.9.2 fixes triggered Activity target application for Foundry V14; v0.9.3 queues/deduplicates Activity triggers until all optional reaction prompts in the batch are resolved; v0.9.4 adds `spellslot X` count/countAlt support with an ordinary/Pact Magic slot selector and cancel-safe payment; v0.9.5 aligns console logging with Midi-QoL Debug and makes spell-slot dialog cancellation a silent opt-out.
 
-## New development tests — v0.10.1 configurable Item Macro stages
+## New development tests — v0.10.2 Item Macro source resolution
 
 Test in a disposable world. Static source checks have passed, but these cases still require in-Foundry verification against Foundry 14.369, D&D 5e 6.0.6, Midi-QoL 14.6.4, and socketlib.
 
+- [ ] A transferred External Reaction Active Effect on an Actor-owned Item whose macro is stored under `flags.dae.macro` is resolved and invoked.
+- [ ] A transferred External Reaction Active Effect is matched back to the embedded source Item by its effect changes even if `fromUuid(effect.origin)` does not return that Item.
+- [ ] An Item Macro stored under legacy `flags.itemacro.macro` still resolves and runs.
+- [ ] With `activation = cast`, a cantrip spell Activity triggers at the explicitly configured `preAttackRoll` stage; confirm the test dialog reports `preAttackRoll`.
 - [ ] With no External Reaction `itemMacro` optional configured anywhere, ordinary Activities still enter their normal workflow; `midi-qol.preTargeting` must never be aborted by the dispatcher-installation hook.
 - [ ] A normal optional with an Activity UUID in `activity.trigger` still queues and uses that Activity as before.
 - [ ] `activity.trigger = itemMacro` with no pass dispatches at `postActiveEffects`, as External Reaction's configured default for a bare trigger. No prompt should be shown before then.
