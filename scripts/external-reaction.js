@@ -859,7 +859,7 @@ function getExternalItemMacroPass(flagData) {
   const configuredPass = foundry.utils.getProperty(flagData, "activity.macroPass")
     ?? foundry.utils.getProperty(flagData, "activity.pass")
     ?? triggerParts[1]
-    ?? "preItemRoll";
+    ?? "postActiveEffects";
   return EXTERNAL_ITEM_MACRO_PASSES.get(String(configuredPass).trim().toLowerCase()) ?? null;
 }
 
@@ -2389,7 +2389,13 @@ async function dispatchExternalItemMacroHook(workflow, macroPass, { cancellable 
   if (cancellable) return false;
 }
 
-Hooks.on("midi-qol.preTargeting", workflow => installExternalItemMacroPassDispatcher(workflow));
+// Do not return installExternalItemMacroPassDispatcher's boolean from this hook.
+// Midi-QoL treats a false preTargeting hook result as an abort. In some Foundry/D&D5e
+// activity contexts there is no callMacros method yet, and the installer returns false;
+// returning that value would cancel every item use even when no External Reaction applies.
+Hooks.on("midi-qol.preTargeting", workflow => {
+  installExternalItemMacroPassDispatcher(workflow);
+});
 
 Hooks.on("midi-qol.preItemRoll", async workflow => {
   if (!workflow) return;
