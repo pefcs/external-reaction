@@ -1974,6 +1974,24 @@ Hooks.once("ready", () => {
       return false;
     }
   });
+  // Run count consumption on the reactor's client so item/feature uses update with
+  // the correct ownership permissions. Only itemMacro interception uses this handler.
+  socket.register("consumeExternalItemMacroCount", async ({ actorUuid, flagKey }) => {
+    try {
+      const actor = await fromUuid(actorUuid);
+      if (!actor) return { ok: false, reason: "actor-not-found" };
+      const options = collectActorExternalOptions(actor);
+      const flagData = options?.[flagKey];
+      if (!flagData || !countAvailable(actor, flagData, flagKey, { ignorePaidSpellSlot: true })) {
+        return { ok: false, reason: "count-no-longer-available" };
+      }
+      const result = await consumeCountWithResourceReceipt(actor, flagKey, flagData);
+      return { ok: true, resources: result.resources ?? [] };
+    } catch (err) {
+      error("Could not consume the External Reaction itemMacro resource on the reactor's client.", err);
+      return { ok: false, reason: "consume-error" };
+    }
+  });
   socket.register("promptReaction", async ({ actorName, itemName, actorUuid, spellSlotMinimum, title, value, label, rollHTML, timeout = 30 }) => {
     const displayValue = String(value ?? "").trim();
     // Keep the body limited to Midi-QoL's roll preview. The optional action button
@@ -2117,8 +2135,20 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
   }
 
   const resourceReceipts = [...(Array.isArray(accepted?.resources) ? accepted.resources : accepted?.resource ? [accepted.resource] : [])];
-  const consumed = await consumeCountWithResourceReceipt(reactor.actor, flagKey, flagData);
-  resourceReceipts.push(...(consumed?.resources ?? []));
+  let consumed;
+  try {
+    consumed = await socket.executeAsUser("consumeExternalItemMacroCount", recipient.id, {
+      actorUuid: reactor.actor.uuid, flagKey
+    });
+  } catch (err) {
+    error("Could not consume the accepted External Reaction count on the reactor's client; continuing the original workflow.", err);
+    return { action: "continue" };
+  }
+  if (!consumed?.ok) {
+    warn("The accepted itemMacro reaction could not consume its count; leaving the original workflow unchanged.", { flagKey, actor: reactor.actor?.name, reason: consumed?.reason });
+    return { action: "continue" };
+  }
+  resourceReceipts.push(...(consumed.resources ?? []));
   const actionActorToken = getWorkflowToken(workflow);
   const actionActor = workflow?.actor ?? actionActorToken?.actor ?? null;
   const activity = workflow?.activity ?? workflow?.item?.system?.activities?.get?.(workflow?.activityId) ?? null;
