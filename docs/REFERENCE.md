@@ -178,6 +178,8 @@ The normal Activity trigger runs **after the reactor accepts** the optional-reac
 
 Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro as a decision point during the triggering item's `midi-qol.preItemRoll` hook. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect; if that cannot be found, External Reaction falls back to an Actor-owned Item whose name, identifier, or ID matches `NAME`. Put the macro on that Item.
 
+For a reaction that must expend both the character's Reaction and a minimum spell slot, configure `count = reaction` and `countAlt = spellslot 3` (or reverse the two). Using only `count = spellslot 3` spends the slot but does not itself mark the character's Reaction as used.
+
 Activation conditions are checked before the prompt. At this interception point, `actor` is the initiating actor (for Counterspell, the caster), `actor.range` is the reactor-to-initiator distance, `CanSee`/bare `canSee` describes the reactor seeing the initiating token, and flags such as `cast`/`attack` describe the initiating item workflow.
 
 The Item Macro receives the original live `workflow` and these additional values:
