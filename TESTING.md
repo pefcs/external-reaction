@@ -404,6 +404,14 @@ Create a reactor with at least one ordinary spell slot and, if possible, a Pact 
 - [ ] Triggered Activity can still start a nested workflow after the original reaction count locks have been released.
 
 
+## v0.10.5 Item Macro hook regression cases
+
+- [ ] Configure `ItemMacro, preItemRoll` on a spell attack. Confirm the reaction prompt triggers before attack/damage rolling. Continue proceeds; Cancel aborts before item rolling.
+- [ ] For `preItemRoll`, if no prompt appears, capture the new `preItemRoll hook fired, but no usable live Workflow` or `Dispatching preItemRoll interception` debug entry, plus the following External Reaction debug lines.
+- [ ] Configure `ItemMacro, preDamageRoll` and choose Cancel. Verify the module first prompts inside the real `midi-qol.preDamageRoll` hook, and no Dice So Nice damage animation or damage roll is produced.
+- [ ] Retest `preCheckHits` and `preSave` with Continue / Cancel / Activity, because v0.10.5 moves them to their dedicated hook path instead of the generic On Use dispatcher.
+- [ ] Verify `postSave` Cancel still stops subsequent damage processing and that `postDamageRoll` Cancel still prevents damage application.
+
 ## v0.10.4 preItemRoll and postSave regression cases
 
 - [ ] Configure `ItemMacro, preItemRoll`, cast a spell with the eligible reactor on the scene, and verify the reaction prompt appears before attack/save/damage rolling and before normal resource consumption.
