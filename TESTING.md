@@ -6,6 +6,10 @@ This is a regression-focused patch release on top of the v0.9.0 Activity-trigger
 
 > Test in a copy of your world. Static code/manifest/ZIP checks have been run; the regression cases below still require verification inside Foundry. v0.9.2 fixes triggered Activity target application for Foundry V14; v0.9.3 queues/deduplicates Activity triggers until all optional reaction prompts in the batch are resolved; v0.9.4 adds `spellslot X` count/countAlt support with an ordinary/Pact Magic slot selector and cancel-safe payment; v0.9.5 aligns console logging with Midi-QoL Debug and makes spell-slot dialog cancellation a silent opt-out.
 
+## User-reported live validation — 2026-10-24
+
+After installing the v0.10.6 flag-scope guard beta, the maintainer reports that the `preSave`, `preCheckHits`, and `preAttackRoll` stages now work. In the preceding v0.10.5 beta test, `preItemRoll` and `preDamageRoll` were also reported to work. These are user-reported Foundry checks; the remaining checklist cases (including Continue / Cancel / Activity return-path combinations and other workflow stages) still need separate verification before treating the development branch as fully regression-tested.
+
 ## New development tests — v0.10.2 Item Macro source resolution
 
 Test in a disposable world. Static source checks have passed, but these cases still require in-Foundry verification against Foundry 14.369, D&D 5e 6.0.6, Midi-QoL 14.6.4, and socketlib.
