@@ -2612,14 +2612,7 @@ Hooks.on("midi-qol.preTargetingV2", workflow => {
   installExternalItemMacroPassDispatcher(workflow);
 });
 
-function getExternalItemMacroWorkflowFromHookPayload(payload) {
-  // V14 legacy hooks receive { activity, token, config: usage, dialog, message };
-  // the corresponding V2 hook receives { workflow, usage, dialog, message }.
-  return payload?.workflow ?? payload?.usage?.workflow ?? payload?.config?.workflow ?? payload;
-}
-
-async function dispatchExternalPreItemRollHook(payload) {
-  const workflow = getExternalItemMacroWorkflowFromHookPayload(payload);
+async function dispatchExternalPreItemRollHook(workflow) {
   if (!workflow || typeof workflow.callMacros !== "function" || !workflow.item || !workflow.actor) return;
   installExternalItemMacroPassDispatcher(workflow);
   const outcome = await dispatchExternalItemMacroStage(workflow, "preItemRoll");
@@ -2629,8 +2622,13 @@ async function dispatchExternalPreItemRollHook(payload) {
   }
 }
 
-Hooks.on("midi-qol.preItemRoll", payload => dispatchExternalPreItemRollHook(payload));
-Hooks.on("midi-qol.preItemRollV2", payload => dispatchExternalPreItemRollHook(payload));
+// Legacy Midi-QoL V14 signature: (activity, token, config, dialog, message).
+// The live Workflow is on config.workflow; the first argument is only the Activity.
+// The V2 signature instead supplies the live Workflow as its first argument.
+Hooks.on("midi-qol.preItemRoll", (_activity, _token, config) =>
+  dispatchExternalPreItemRollHook(config?.workflow));
+Hooks.on("midi-qol.preItemRollV2", workflow =>
+  dispatchExternalPreItemRollHook(workflow));
 
 // Midi-QoL 14's AttackActivity.configureAttackRoll returns false when this hook
 // returns false, but rollAttack then falls back to the base D&D5e roll path. That
