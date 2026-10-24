@@ -2,6 +2,11 @@
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
 
+## 0.10.6 — development Item Macro flag-scope guard
+
+- Fix Item Macro source resolution when Foundry's `Document#getFlag` throws because the legacy `itemacro` scope is not registered or active. Read serialized DAE/DIME and legacy Item Macro flags first, and guard optional getter fallbacks so a missing optional scope cannot abort all workflow-stage dispatch.
+- Add regression coverage for DAE/DIME macro resolution and worlds where the legacy Item Macro module flag scope is unavailable.
+
 ## 0.10.5 — development Item Macro stage hook fixes
 
 - Fix case-sensitive membership checks for hook-only stages. The dispatcher lowercases macro-pass names before checking the set, so the set values are now lowercased too. `preCheckHits`, `preDamageRoll`, and `preSave` now wait for their dedicated Midi-QoL hook instead of being dispatched early through `Workflow.callMacros`.
