@@ -2,7 +2,7 @@
   "id": "external-reaction",
   "title": "External Reaction",
   "description": "Adds scene-wide third-party reactions, activation-event conditions, Item Macro workflow interception, resource receipts, and configurable roll bonuses for D&D 5e.",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "compatibility": {
     "minimum": "14",
     "verified": "14.369"
