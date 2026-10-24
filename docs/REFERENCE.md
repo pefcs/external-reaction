@@ -296,6 +296,12 @@ External Reaction follows the world setting **Midi-QoL → Debug** for browser-c
 | `All` | All of the above, plus verbose trace messages. |
 
 
+## Item Macro hook-only stages and early preItemRoll context
+
+The generic `Workflow.callMacros` pass name is compared in lowercase. The hook-only stage set must therefore use lowercase keys (`precheckhits`, `predamageroll`, `presave`). If not, the generic dispatcher may run those reactions before Midi-QoL's awaited hook. In particular, cancelling `preDamageRoll` at that earlier point only marks the Workflow aborted; the damage-roll state can still enter `rollDamage` before the actual cancellable `midi-qol.preDamageRoll` hook runs, allowing a Dice So Nice animation even if no damage card appears.
+
+Midi-QoL may expose `preItemRoll` through either legacy positional arguments or the V2 live-Workflow argument. External Reaction normalizes both callback shapes, recursively searches nested hook arguments for the Workflow's `callMacro` helper, and supplements the early Workflow with Activity/Token/Item/Actor/target context from the hook when available. If no executable Workflow is present yet, the debug log describes the received arguments to aid diagnosis; no workflow is synthesized because macro execution and safe cancellation require Midi's live `callMacro` workflow context.
+
 ## preItemRoll and postSave cancellation notes
 
 Midi-QoL V14 calls its legacy `midi-qol.preItemRoll` hook with positional arguments `(activity, token, config, dialog, message)`; the live Workflow is exposed as `config.workflow`. Its V2 hook passes `(workflow, usage, dialog, message)`. External Reaction resolves both forms and registers both hooks, relying on per-workflow pass deduplication to prevent two prompts. A callback with incomplete workflow/token context must not consume the pass as "seen"; later V2 dispatch may be the first callback with a usable context.
