@@ -2578,6 +2578,14 @@ Hooks.on("midi-qol.preTargeting", workflow => {
   installExternalItemMacroPassDispatcher(workflow);
 });
 
+// Midi-QoL's V2 hook passes the actual live Workflow, unlike the legacy
+// preTargeting signature (activity, token, config, dialog, message). Install the
+// dispatcher here so non-attack Activities also suppress their native ItemMacro.
+Hooks.on("midi-qol.preTargetingV2", workflow => {
+  markExternalTriggeredActivityWorkflow(workflow);
+  installExternalItemMacroPassDispatcher(workflow);
+});
+
 Hooks.on("midi-qol.preItemRoll", async workflow => {
   if (!workflow) return;
   installExternalItemMacroPassDispatcher(workflow);
