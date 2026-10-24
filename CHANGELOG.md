@@ -1,6 +1,15 @@
 # Changelog
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
+
+## 0.10.0 — development build
+
+- Added Boolean activation-condition event flags for casts, attack and attack types, saves, checks, skills, damage/healing, and related workflow categories.
+- Added `activity.trigger = itemMacro` preItemRoll interception. Item Macros can cancel/continue the initiating workflow or request an Activity.
+- Added structured spell-slot and ItemUses/ActivityUses resource receipts to Item Macro context.
+- Item Macro count consumption now runs on the reactor's client to respect ownership permissions.
+- Important limitation: cancelling at preItemRoll happens before the original item's normal resource consumption. Interrupted-caster slot spending for 2014 Counterspell is not automated yet.
+
 ## 0.9.8
 
 - Some more examples in FLAG-VALUE-EXAMPLES.md
