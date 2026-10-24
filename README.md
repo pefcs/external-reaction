@@ -4,10 +4,12 @@ External Reaction extends Midi-QoL-style optional roll bonuses so a creature on 
 
 The module is designed for **Foundry Virtual Tabletop V14**, **D&D 5e 6.0.6+**, **Midi-QoL**, and **socketlib**.
 
-## Development version 0.10.1
+## Development version 0.10.2
 
 This development build adds workflow-event activation flags (`cast`, `attack`, attack types, saves/checks/skills and related activity flags), an `activity.trigger = itemMacro` interception path with configurable Midi-QoL macro passes, and structured resource receipts for selected spell slots and ItemUses/ActivityUses counts. Item Macros can continue the original workflow, abort its remaining stages, or request another Activity.
 
+
+**Version 0.10.2 Item Macro source fix:** the prior beta could not locate the transferred effect's source Item in some cases and only read the legacy `flags.itemacro.macro` field. This build also searches the reactor Actor's embedded Items for the Item containing the matching External Reaction Active Effect and reads DAE/DIME `flags.dae.macro` before falling back to `flags.itemacro.macro`.
 
 **0.10.1 regression fix:** The beta's pre-targeting integration could return the dispatcher's internal `false` result to Midi-QoL, which aborts an item use. The hook now installs the dispatcher without returning that value; actions without a matching external Item Macro should proceed normally.
 
