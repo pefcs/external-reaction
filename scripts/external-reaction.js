@@ -10,6 +10,9 @@ const patchedSaveWorkflows = new WeakSet();
 const processedExternalCheckRolls = new WeakSet();
 const patchedDamageWorkflows = new WeakSet();
 const processedACWorkflows = new WeakSet();
+// Pending, one-shot contexts that suppress recursive ItemMacro calls when an
+// Activity returned by that same ItemMacro is used as an External Reaction.
+const externalTriggeredActivityContexts = [];
 
 /* ------------------------------------------------------------------------- *
  * Logging
@@ -1499,7 +1502,78 @@ async function chooseExternalActivityTargets(activity, candidates, maxTargets) {
   }
 }
 
-async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger }) {
+function snapshotExternalActivityTargets(user = game.user) {
+  const seen = new Set();
+  return [...(user?.targets ?? [])].map(target => {
+    const id = target?.id ?? target?.document?.id;
+    if (!id || seen.has(id)) return null;
+    seen.add(id);
+    return canvas?.tokens?.get?.(id) ?? normalizeToken(target);
+  }).filter(token => token && (token.id ?? token.document?.id));
+}
+
+function restoreExternalActivityTargets(targets, user = game.user) {
+  if (!user) return;
+  // Clear only this user's targets; leave every other user's target state alone.
+  for (const current of [...(user.targets ?? [])]) {
+    const id = current?.id ?? current?.document?.id;
+    const token = (id && canvas?.tokens?.get?.(id)) ?? normalizeToken(current);
+    token?.setTarget?.(false, { user, releaseOthers: false });
+  }
+  for (const [index, token] of targets.entries()) {
+    token?.setTarget?.(true, { user, releaseOthers: index === 0 });
+  }
+}
+
+function markExternalTriggeredActivityWorkflow(workflow) {
+  if (!workflow) return;
+  const actorUuid = workflow.actor?.uuid ?? workflow.item?.actor?.uuid;
+  const itemUuid = workflow.item?.uuid ?? workflow.activity?.item?.uuid;
+  const index = externalTriggeredActivityContexts.findIndex(context =>
+    !context.consumed && context.actorUuid === actorUuid && context.activityItemUuid === itemUuid
+  );
+  if (index < 0) return;
+  const [context] = externalTriggeredActivityContexts.splice(index, 1);
+  context.consumed = true;
+  if (context.suppressItemMacroUuid) {
+    Object.defineProperty(workflow, "__externalReactionSuppressItemMacroUuid", {
+      configurable: true, enumerable: false, writable: true,
+      value: context.suppressItemMacroUuid
+    });
+    debug("Suppressing recursive ItemMacro call on an Activity returned by that ItemMacro.", {
+      actorUuid, itemUuid, macroItemUuid: context.suppressItemMacroUuid
+    });
+  }
+}
+
+async function useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid = null, targetsToUse = null) {
+  const user = game.user;
+  const originalTargets = snapshotExternalActivityTargets(user);
+  const suppressSameItemMacro = !!suppressItemMacroUuid && activity?.item?.uuid === suppressItemMacroUuid;
+  const context = suppressSameItemMacro ? {
+    actorUuid: actor.uuid,
+    activityItemUuid: activity.item.uuid,
+    suppressItemMacroUuid
+  } : null;
+  if (context) externalTriggeredActivityContexts.push(context);
+  try {
+    if (Array.isArray(targetsToUse)) {
+      for (const [index, token] of targetsToUse.entries()) {
+        token.setTarget(true, { user, releaseOthers: index === 0 });
+      }
+    }
+    await activity.use();
+    return true;
+  } finally {
+    if (context) {
+      const index = externalTriggeredActivityContexts.indexOf(context);
+      if (index >= 0) externalTriggeredActivityContexts.splice(index, 1);
+    }
+    restoreExternalActivityTargets(originalTargets, user);
+  }
+}
+
+async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid = null }) {
   const actor = await fromUuid(actorUuid);
   if (!actor?.items) throw new Error(`Could not resolve the reactor Actor: ${actorUuid}`);
   const reference = String(trigger ?? "").trim();
@@ -1534,7 +1608,7 @@ async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger }) {
   // Area activities should follow the normal Activity UI flow (template placement,
   // activation dialog, scaling, consumption, and subsequent actions remain system-owned).
   if (templateType && templateType !== "none") {
-    await activity.use();
+    await useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid);
     return true;
   }
 
@@ -1566,10 +1640,7 @@ async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger }) {
   if (!targetPlaceables.length) {
     throw new Error("Could not resolve any selected targets to Foundry Token placeables.");
   }
-  for (const [index, token] of targetPlaceables.entries()) {
-    token.setTarget(true, { releaseOthers: index === 0 });
-  }
-  await activity.use();
+  await useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid, targetPlaceables);
   return true;
 }
 
@@ -1993,9 +2064,9 @@ Hooks.once("ready", () => {
     });
     return result === true;
   });
-  socket.register("triggerExternalActivity", async ({ actorUuid, tokenUuid, trigger }) => {
+  socket.register("triggerExternalActivity", async ({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid }) => {
     try {
-      return await runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger });
+      return await runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid });
     } catch (err) {
       error(`Triggered Activity '${String(trigger ?? "")}' failed.`, err);
       ui.notifications?.error(`External Reaction: failed to use triggered Activity '${String(trigger ?? "")}'. Check the console for details.`);
@@ -2333,7 +2404,8 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
     const tokenUuid = token?.document?.uuid ?? token?.uuid;
     try {
       const started = await socket.executeAsUser("triggerExternalActivity", recipient.id, {
-        actorUuid: reactor.actor.uuid, tokenUuid, trigger: activityDocument.uuid ?? activityReference
+        actorUuid: reactor.actor.uuid, tokenUuid, trigger: activityDocument.uuid ?? activityReference,
+        suppressItemMacroUuid: macroItem?.uuid ?? null
       });
       if (started === false) debug("Item Macro returned an Activity, but its use was cancelled or unavailable.", { flagKey, activityReference });
       return { action: cancelOriginalAfterActivity && started !== false ? "cancel" : "continue", trigger: eventContext, activityUuid: activityDocument.uuid };
@@ -2362,7 +2434,22 @@ function installExternalItemMacroPassDispatcher(workflow) {
   if (state.originalCallMacros) return true;
   state.originalCallMacros = workflow.callMacros;
   workflow.callMacros = async function(item, macros, tag, macroPass, ...rest) {
-    const results = await state.originalCallMacros.call(this, item, macros, tag, macroPass, ...rest);
+    let effectiveMacros = macros;
+    const suppressItemUuid = this.__externalReactionSuppressItemMacroUuid;
+    if (tag === "OnUse" && suppressItemUuid && item?.uuid === suppressItemUuid && typeof macros === "string") {
+      const names = macros.split(",").map(name => name.trim()).filter(Boolean);
+      const filtered = names.filter(name => {
+        const baseName = name.split("|", 1)[0].trim().toLowerCase();
+        return baseName !== "itemmacro" && !baseName.startsWith("itemmacro.");
+      });
+      if (filtered.length !== names.length) {
+        debug("Skipped recursive native ItemMacro on Activity returned by External Reaction.", {
+          item: item?.name, macroPass, removed: names.filter(name => !filtered.includes(name))
+        });
+        effectiveMacros = filtered.join(",");
+      }
+    }
+    const results = await state.originalCallMacros.call(this, item, effectiveMacros, tag, macroPass, ...rest);
     const passName = String(macroPass ?? "").trim().toLowerCase();
     if (tag === "OnUse" && EXTERNAL_ITEM_MACRO_PASSES.has(passName)
         && !EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES.has(passName)
@@ -2483,6 +2570,7 @@ async function dispatchExternalItemMacroHook(workflow, macroPass, { cancellable 
 // activity contexts there is no callMacros method yet, and the installer returns false;
 // returning that value would cancel every item use even when no External Reaction applies.
 Hooks.on("midi-qol.preTargeting", workflow => {
+  markExternalTriggeredActivityWorkflow(workflow);
   installExternalItemMacroPassDispatcher(workflow);
 });
 
@@ -2493,14 +2581,27 @@ Hooks.on("midi-qol.preItemRoll", async workflow => {
   if (outcome.cancel) { workflow.aborted = true; return false; }
 });
 
-Hooks.on("midi-qol.preAttackRoll", workflow => dispatchExternalItemMacroHook(workflow, "preAttackRoll", { cancellable: true }));
+// Midi-QoL 14's AttackActivity.configureAttackRoll returns false when this hook
+// returns false, but rollAttack then falls back to the base D&D5e roll path. That
+// fallback opens the standard roll configurator and can still roll. Marking the
+// workflow aborted without returning false lets configureAttackRoll complete, after
+// which Midi-QoL's existing aborted check exits before the dialog or d20 roll.
+Hooks.on("midi-qol.preAttackRoll", async workflow => {
+  if (!workflow) return;
+  installExternalItemMacroPassDispatcher(workflow);
+  const outcome = await dispatchExternalItemMacroStage(workflow, "preAttackRoll");
+  if (outcome.cancel) {
+    workflow.aborted = true;
+    log("Cancelled attack before the roll configurator; workflow marked aborted.", outcome.trigger);
+  }
+});
 Hooks.on("midi-qol.preCheckHits", workflow => dispatchExternalItemMacroHook(workflow, "preCheckHits"));
 Hooks.on("midi-qol.preDamageRoll", workflow => dispatchExternalItemMacroHook(workflow, "preDamageRoll", { cancellable: true }));
 Hooks.on("midi-qol.preCheckSaves", workflow => dispatchExternalItemMacroHook(workflow, "preSave"));
 
 Hooks.on("midi-qol.preAttackRoll", async (workflow) => {
   try {
-    if (!workflow || patchedWorkflows.has(workflow)) return;
+    if (!workflow || workflow.aborted || patchedWorkflows.has(workflow)) return;
     const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId);
     const targets = [...(workflow.targets ?? [])];
     const midi = game.modules.get("midi-qol")?.api;
