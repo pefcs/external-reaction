@@ -193,12 +193,12 @@ For a reaction that must expend both the character's Reaction and a minimum spel
 
 Activation conditions are checked immediately before the prompt at the configured stage. In the context, `actor` is the initiating actor (for Counterspell, the caster), `actor.range` is the reactor-to-initiator distance, `CanSee`/bare `canSee` describes the reactor seeing the initiating token, and flags such as `cast`/`attack` describe the initiating workflow.
 
-The Item Macro receives the original live `workflow` and these additional values:
+The Item Macro receives the original live `workflow` through Midi-QoL's usual macro scope. External Reaction's additional metadata is included in the Midi-QoL macro-data object at `args[0]`; read custom fields from there rather than assuming they are standalone variables:
 
-- `externalReaction.trigger`: `type`, `eventFlags`, `phase` (the selected pass), `macroPass`, `workflowId`, `actorUuid`, `itemUuid`, `activityUuid`, `spellLevel`, `reactorUuid`, and `flagKey`.
-- `externalReaction.resource`: the first resource receipt, or `null`.
-- `externalReaction.resources`: an array of resource receipts.
-- Top-level aliases `resource`, `resources`, `reactor`, and `reactorToken` are also provided. The macro's `actor` is the reactor; `target` is the initiating token; `targetActor` is the initiating actor.
+- `args[0].externalReaction.trigger`: `type`, `eventFlags`, `phase` (the selected pass), `macroPass`, `workflowId`, `actorUuid`, `itemUuid`, `activityUuid`, `spellLevel`, `reactorUuid`, and `flagKey`.
+- `args[0].externalReaction.resource`: the first resource receipt, or `null`.
+- `args[0].externalReaction.resources`: an array of resource receipts.
+- Additional data-object aliases are `args[0].resource`, `args[0].resources`, `args[0].reactor`, and `args[0].reactorToken`. The macro's usual `actor` is the reactor; `target` is the initiating token; `targetActor` is the initiating actor when exposed by the macro scope. For example, use `const reactionContext = args[0].externalReaction;` to access the trigger metadata.
 
 Supported Item Macro return values:
 
