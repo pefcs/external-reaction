@@ -2,6 +2,13 @@
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
 
+## 0.10.5 — development Item Macro stage hook fixes
+
+- Fix case-sensitive membership checks for hook-only stages. The dispatcher lowercases macro-pass names before checking the set, so the set values are now lowercased too. `preCheckHits`, `preDamageRoll`, and `preSave` now wait for their dedicated Midi-QoL hook instead of being dispatched early through `Workflow.callMacros`.
+- Normalize legacy and V2 `preItemRoll` hook arguments variadically and search nested workflow/config/usage data for Midi's `callMacro` Workflow helper.
+- Feed Activity, Token, Actor, Item, and target context from the early-use hook arguments when those fields have not yet been copied onto the Workflow; add debug output if no usable live Workflow is available.
+- Retest `preCheckHits` and `preSave` after the corrected hook dispatch because these passes now use the intended dedicated-hook path.
+
 ## 0.10.4 — development preItemRoll and postSave cancellation fix
 
 - Resolve the Midi-QoL V14 legacy `preItemRoll` hook payload through `config.workflow` and register the `preItemRollV2` hook too; don't mark a pass as seen if the callback does not yet have a usable initiating scene-token context.
