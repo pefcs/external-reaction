@@ -995,7 +995,10 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
 
   if (conditionData.actor && Number.isFinite(actorRange)) conditionData.actor.range = actorRange;
   if (Number.isFinite(targetRange)) conditionData.range = targetRange;
+  // Support both spellings in activation expressions. Existing examples use CanSee,
+  // while users may naturally write canSee; both must resolve to the same visibility result.
   conditionData.CanSee = canSeeTarget;
+  conditionData.canSee = canSeeTarget;
   // Friendly/enemy and range/CanSee now describe the reaction's actual target. Use
   // actor.disposition / target.disposition when the expression needs to inspect both sides.
   conditionData.friendly = dispositionMatches(reactor, targetToken, "friendly");
@@ -1041,8 +1044,10 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
   conditionData.isCheckFail = conditionData.isCheck && context.phase === "fail";
 
   try {
-    // Match Midi's bonusDialog activation evaluation: async expression, true on eval error.
-    const result = await midi.evalCondition(expression, conditionData, { errorReturn: true, async: true });
+    // Activation conditions can restrict whether an optional is offered. Fail closed on
+    // evaluation errors: an unknown variable or malformed expression must never bypass
+    // a range/visibility restriction by being treated as true.
+    const result = await midi.evalCondition(expression, conditionData, { errorReturn: false, async: true });
     const allowed = !!result;
     debug("Evaluated optional activation condition.", {
       actor: actionActor?.name,
@@ -1065,8 +1070,8 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
     return allowed;
   } catch (err) {
     error("Could not evaluate External Reaction activation condition.", err);
-    // Midi's optional bonus path uses errorReturn:true. Keep that same permissive fallback.
-    return true;
+    // Do not offer the optional when its activation condition cannot be evaluated.
+    return false;
   }
 }
 
