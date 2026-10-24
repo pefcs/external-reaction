@@ -6,9 +6,9 @@ The module is designed for **Foundry Virtual Tabletop V14**, **D&D 5e 6.0.6+**, 
 
 ## Development version 0.10.0
 
-This development build adds workflow-event activation flags (`cast`, `attack`, attack types, saves/checks/skills and related activity flags), an `activity.trigger = itemMacro` interception path, and structured resource receipts for selected spell slots and ItemUses/ActivityUses counts. Item macros can continue the original workflow, cancel it, or request another Activity.
+This development build adds workflow-event activation flags (`cast`, `attack`, attack types, saves/checks/skills and related activity flags), an `activity.trigger = itemMacro` interception path with configurable Midi-QoL macro passes, and structured resource receipts for selected spell slots and ItemUses/ActivityUses counts. Item Macros can continue the original workflow, abort its remaining stages, or request another Activity.
 
-**Important:** `itemMacro` interception currently uses Midi-QoL's `preItemRoll` hook. This hook runs before the initiating item's normal resource consumption. Returning `cancel` aborts the workflow at this stage, so spells such as 2014 Counterspell still need an explicit, tested way to preserve the interrupted caster's spell-slot consumption if rules-accurate slot use is required. Do not treat this development build as finished Counterspell automation until that case is tested.
+**Important:** `itemMacro` defaults to `preItemRoll`, but can use later stages such as `ItemMacro, postAttackRoll`. Cancellation does not undo work already completed: at `postAttackRoll`, the attack roll and hit/miss result remain visible, while damage has not yet been rolled. Other late stages may already have applied damage or effects. Some documented Midi passes are deliberately excluded if they are not reliable cancellation points. A rules-accurate 2014 Counterspell setup still needs an explicit, tested way to preserve the interrupted caster's spell-slot consumption if required.
 
 ## Documentation
 
