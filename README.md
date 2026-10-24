@@ -4,11 +4,14 @@ External Reaction extends Midi-QoL-style optional roll bonuses so a creature on 
 
 The module is designed for **Foundry Virtual Tabletop V14**, **D&D 5e 6.0.6+**, **Midi-QoL**, and **socketlib**.
 
-## Development version 0.10.0
+## Development version 0.10.1
 
 This development build adds workflow-event activation flags (`cast`, `attack`, attack types, saves/checks/skills and related activity flags), an `activity.trigger = itemMacro` interception path with configurable Midi-QoL macro passes, and structured resource receipts for selected spell slots and ItemUses/ActivityUses counts. Item Macros can continue the original workflow, abort its remaining stages, or request another Activity.
 
-**Important:** `itemMacro` defaults to `preItemRoll`, but can use later stages such as `ItemMacro, postAttackRoll`. Cancellation does not undo work already completed: at `postAttackRoll`, the attack roll and hit/miss result remain visible, while damage has not yet been rolled. Other late stages may already have applied damage or effects. Some documented Midi passes are deliberately excluded if they are not reliable cancellation points. A rules-accurate 2014 Counterspell setup still needs an explicit, tested way to preserve the interrupted caster's spell-slot consumption if required.
+
+**0.10.1 regression fix:** The beta's pre-targeting integration could return the dispatcher's internal `false` result to Midi-QoL, which aborts an item use. The hook now installs the dispatcher without returning that value; actions without a matching external Item Macro should proceed normally.
+
+**Important:** A bare `ItemMacro` defaults to `postActiveEffects`, matching Midi-QoL's traditional OnUse macro default. You can select another stage, such as `ItemMacro, postAttackRoll`, when you need the reaction earlier. Cancellation does not undo work already completed: at `postAttackRoll`, the attack roll and hit/miss result remain visible, while damage has not yet been rolled. Other late stages may already have applied damage or effects. Some documented Midi passes are deliberately excluded if they are not reliable cancellation points. A rules-accurate 2014 Counterspell setup still needs an explicit, tested way to preserve the interrupted caster's spell-slot consumption if required.
 
 ## Documentation
 
