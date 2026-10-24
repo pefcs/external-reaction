@@ -835,8 +835,38 @@ function getExternalWorkflowEventFlags(workflow, context = {}) {
   };
 }
 
+const EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES = new Set(["preCheckHits", "preDamageRoll", "preSave"]);
+
+const EXTERNAL_ITEM_MACRO_PASSES = new Map([
+  ...["preTargeting", "preItemRoll", "templatePlaced", "preAttackRoll", "preCheckHits",
+    "postAttackRoll", "preDamageRoll", "postDamageRoll", "preSave", "postSave",
+    "preActiveEffects", "postActiveEffects"].map(pass => [pass.toLowerCase(), pass]),
+  ...["preStart", "postStart", "preAwaitItemCard", "postAwaitItemCard", "preAwaitTemplate", "postAwaitTemplate",
+    "preTemplatePlaced", "postTemplatePlaced", "preAoETargetConfirmation", "postAoETargetConfirmation",
+    "preValidateRoll", "postValidateRoll", "prePreambleComplete", "postPreambleComplete",
+    "preWaitForAttackRoll", "postWaitForAttackRoll", "preAttackRollComplete", "postAttackRollComplete",
+    "preWaitForDamageRoll", "postWaitForDamageRoll", "preConfirmRoll", "postConfirmRoll",
+    "preRollConfirmed", "postRollConfirmed", "preDamageRollStarted", "postDamageRollStarted",
+    "preDamageRollComplete", "postDamageRollComplete", "preWaitForUtilityRoll", "postWaitForUtilityRoll",
+    "preUtilityRollComplete", "postUtilityRollComplete", "preWaitForSaves", "postWaitForSaves",
+    "preSavesComplete", "postSavesComplete", "preAllRollsComplete", "postAllRollsComplete",
+    "preApplyDynamicEffects", "postApplyDynamicEffects", "preCleanup", "postCleanup",
+    "preCompleted", "postCompleted", "preRollFinished", "postRollFinished"].map(pass => [pass.toLowerCase(), pass])
+]);
+
+function getExternalItemMacroPass(flagData) {
+  const rawTrigger = String(foundry.utils.getProperty(flagData, "activity.trigger") ?? "").trim();
+  const triggerParts = rawTrigger.split(",").map(part => part.trim()).filter(Boolean);
+  if (triggerParts[0]?.toLowerCase() !== "itemmacro") return null;
+  const configuredPass = foundry.utils.getProperty(flagData, "activity.macroPass")
+    ?? foundry.utils.getProperty(flagData, "activity.pass")
+    ?? triggerParts[1]
+    ?? "preItemRoll";
+  return EXTERNAL_ITEM_MACRO_PASSES.get(String(configuredPass).trim().toLowerCase()) ?? null;
+}
+
 function isExternalItemMacroTrigger(flagData) {
-  return String(foundry.utils.getProperty(flagData, "activity.trigger") ?? "").trim().toLowerCase() === "itemmacro";
+  return String(foundry.utils.getProperty(flagData, "activity.trigger") ?? "").trim().split(",")[0]?.trim().toLowerCase() === "itemmacro";
 }
 
 async function evaluateExternalActivation(reactor, workflow, referenceToken, context = {}, midi = game.modules.get("midi-qol")?.api) {
@@ -2121,7 +2151,7 @@ function getExternalSpellLevel(workflow) {
   return null;
 }
 
-async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken, eventFlags, accepted }) {
+async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken, eventFlags, accepted, macroPass = "preItemRoll" }) {
   const macroItem = await resolveExternalReactionMacroItem(reactor.actor, flagKey);
   const macroDataFlag = macroItem?.flags?.itemacro?.macro ?? macroItem?.getFlag?.("itemacro", "macro");
   if (!macroItem || typeof macroDataFlag?.command !== "string" || !macroDataFlag.command.trim()) {
@@ -2155,13 +2185,13 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
   const activity = workflow?.activity ?? workflow?.item?.system?.activities?.get?.(workflow?.activityId) ?? null;
   const eventContext = {
     type: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
-    eventFlags, phase: "preItemRoll", workflowId: workflow?.uuid ?? workflow?.id ?? null,
+    eventFlags, phase: macroPass, macroPass, workflowId: workflow?.uuid ?? workflow?.id ?? null,
     actorUuid: actionActor?.uuid ?? null, itemUuid: workflow?.item?.uuid ?? activity?.item?.uuid ?? null,
     activityUuid: activity?.uuid ?? null, spellLevel: getExternalSpellLevel(workflow),
     reactorUuid: reactor.actor?.uuid, flagKey
   };
   const macroData = workflow.getMacroData?.() ?? {};
-  macroData.macroPass = `${FLAG_ROOT}.${flagKey}.activity.trigger`;
+  macroData.macroPass = macroPass;
   macroData.workflow = workflow;
   macroData.tag = "externalReaction";
   macroData.actor = reactor.actor;
@@ -2183,7 +2213,7 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
     return { action: "continue" };
   }
 
-  if (typeof result === "string" && result.trim().toLowerCase() === "cancel") {
+  if (result === true || (typeof result === "string" && result.trim().toLowerCase() === "cancel")) {
     log(`Item Macro trigger cancelled the original workflow (${flagKey}).`, eventContext);
     return { action: "cancel", trigger: eventContext };
   }
@@ -2233,69 +2263,152 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
   return { action: "continue", trigger: eventContext };
 }
 
-Hooks.on("midi-qol.preItemRoll", async (workflow) => {
-  try {
-    if (!workflow || workflow.__externalReactionItemMacroHandled) return;
-    const midi = game.modules.get("midi-qol")?.api;
-    const socket = game.modules.get(MODULE_ID)?.api?.socket;
-    if (!socket || !midi?.playerForActor || !midi?.midiRenderRoll) return;
-    const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
-    const actionType = String(activity?.actionType ?? activity?.system?.actionType ?? workflow.item?.system?.actionType ?? "").toLowerCase();
-    const eventFlags = getExternalWorkflowEventFlags(workflow, { actionType, activity, item: workflow.item, itemUse: true });
-    const actionActorToken = getWorkflowToken(workflow);
-    const actionActor = workflow.actor ?? actionActorToken?.actor;
-    // Cross-actor spatial reactions require a real scene token for the triggering actor.
-    // Do not let a missing token turn CanSee or actor.range into a self-token false positive.
-    if (!actionActorToken?.actor || actionActorToken.actor.uuid !== actionActor?.uuid) {
-      debug("Skipping itemMacro interception because the initiating actor has no matching scene token.", {
-        actor: actionActor?.name, item: workflow.item?.name
-      });
-      return;
-    }
-    const targets = [...(workflow.targets ?? [])];
-    const actorMap = collectSceneActors([actionActorToken, ...targets].filter(Boolean));
-    const gm = game.users.find(user => user.active && user.isGM);
-    workflow.__externalReactionItemMacroHandled = true;
+function getExternalItemMacroDispatchState(workflow) {
+  if (!workflow.__externalReactionItemMacroDispatchState) {
+    Object.defineProperty(workflow, "__externalReactionItemMacroDispatchState", {
+      configurable: true, enumerable: false, writable: false,
+      value: { seenPasses: new Set(), originalCallMacros: null, dispatching: false }
+    });
+  }
+  return workflow.__externalReactionItemMacroDispatchState;
+}
 
-    for (const { actor, token } of actorMap.values()) {
-      if (!actor || actor.uuid === actionActor?.uuid) continue;
-      const options = collectActorExternalOptions(actor);
-      for (const [flagKey, flagData] of Object.entries(options)) {
-        if (!flagData || typeof flagData !== "object" || !isExternalItemMacroTrigger(flagData)) continue;
-        const user = midi.playerForActor(actor);
-        const recipient = user?.active ? user : gm;
-        if (!recipient) continue;
-        const reactorToken = findTokenForActor(actor, [token]);
-        const reactor = { actor, token: reactorToken ?? token, flagKey, flagData, usesCharacterReaction: flagData.count === "reaction" || flagData.countAlt === "reaction", recipient, midi };
-        if (!countAvailable(actor, flagData, flagKey)) continue;
-        if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
-        const macroItem = await resolveExternalReactionMacroItem(actor, flagKey);
-        const itemMacro = macroItem?.flags?.itemacro?.macro ?? macroItem?.getFlag?.("itemacro", "macro");
-        if (!macroItem || typeof itemMacro?.command !== "string" || !itemMacro.command.trim()) {
-          debug("Skipping itemMacro optional because its source Item or Item Macro command could not be resolved.", { reactor: actor.name, flagKey, sourceItem: macroItem?.name });
-          continue;
+function installExternalItemMacroPassDispatcher(workflow) {
+  if (!workflow || typeof workflow.callMacros !== "function") return false;
+  const state = getExternalItemMacroDispatchState(workflow);
+  if (state.originalCallMacros) return true;
+  state.originalCallMacros = workflow.callMacros;
+  workflow.callMacros = async function(item, macros, tag, macroPass, ...rest) {
+    const results = await state.originalCallMacros.call(this, item, macros, tag, macroPass, ...rest);
+    const passName = String(macroPass ?? "").trim().toLowerCase();
+    if (tag === "OnUse" && EXTERNAL_ITEM_MACRO_PASSES.has(passName)
+        && !EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES.has(passName)
+        && !state.dispatching && !this.aborted && !state.seenPasses.has(passName)) {
+      const canonicalPass = EXTERNAL_ITEM_MACRO_PASSES.get(passName);
+      const outcome = await dispatchExternalItemMacroStage(this, canonicalPass);
+      if (outcome.cancel) {
+        if (canonicalPass === "preActiveEffects") {
+          return [...(Array.isArray(results) ? results : []), { haltEffectsApplication: true }];
         }
-        const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken ?? token, {
-          actionKind: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
-          phase: "preItemRoll", actionType, activity, item: workflow.item, eventFlags,
-          actionActorToken, actionActor, actionTargetToken: targets[0] ?? actionActorToken
-        }, midi);
-        if (!activationAllowed || !countAvailable(actor, flagData, flagKey)) continue;
-        if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
-        const title = `${actionActor?.name ?? "A creature"} is using ${workflow.item?.name ?? activity?.item?.name ?? "an item"} — ${actor.name}'s reaction`;
-        const value = String(flagData.label ?? `Use ${macroItem.name}`);
-        const accepted = await promptForReaction(socket, midi, reactor, workflow, null, value, flagData, title);
-        if (!accepted) continue;
-        if (!countAvailable(actor, flagData, flagKey, { ignorePaidSpellSlot: accepted?.spellSlotPaid === true })
-            || (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor))) continue;
-        const outcome = await executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken: actionActorToken, eventFlags, accepted });
-        if (outcome.action === "cancel") return false;
+        this.aborted = true;
       }
     }
+    return results;
+  };
+  return true;
+}
+
+async function dispatchExternalItemMacroStage(workflow, macroPass) {
+  if (!workflow) return { cancel: false };
+  const state = getExternalItemMacroDispatchState(workflow);
+  const passKey = String(macroPass ?? "").toLowerCase();
+  if (state.seenPasses.has(passKey) || state.dispatching || workflow.aborted) return { cancel: false };
+  state.seenPasses.add(passKey);
+  state.dispatching = true;
+  try {
+      if (!workflow || workflow.__externalReactionItemMacroHandled) return { cancel: false };
+      const midi = game.modules.get("midi-qol")?.api;
+      const socket = game.modules.get(MODULE_ID)?.api?.socket;
+      if (!socket || !midi?.playerForActor || !midi?.midiRenderRoll) return { cancel: false };
+      const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
+      const actionType = String(activity?.actionType ?? activity?.system?.actionType ?? workflow.item?.system?.actionType ?? "").toLowerCase();
+      const eventFlags = getExternalWorkflowEventFlags(workflow, { actionType, activity, item: workflow.item, itemUse: true });
+      const actionActorToken = getWorkflowToken(workflow);
+      const actionActor = workflow.actor ?? actionActorToken?.actor;
+      // Cross-actor spatial reactions require a real scene token for the triggering actor.
+      // Do not let a missing token turn CanSee or actor.range into a self-token false positive.
+      if (!actionActorToken?.actor || actionActorToken.actor.uuid !== actionActor?.uuid) {
+        debug("Skipping itemMacro interception because the initiating actor has no matching scene token.", {
+          actor: actionActor?.name, item: workflow.item?.name
+        });
+        return { cancel: false };
+      }
+      const targets = [...(workflow.targets ?? [])];
+      const actorMap = collectSceneActors([actionActorToken, ...targets].filter(Boolean));
+      const gm = game.users.find(user => user.active && user.isGM);
+      
+  
+      for (const { actor, token } of actorMap.values()) {
+        if (!actor || actor.uuid === actionActor?.uuid) continue;
+        const options = collectActorExternalOptions(actor);
+        for (const [flagKey, flagData] of Object.entries(options)) {
+          if (!flagData || typeof flagData !== "object" || !isExternalItemMacroTrigger(flagData)) continue;
+          const configuredPass = getExternalItemMacroPass(flagData);
+          if (!configuredPass) {
+            debug("Skipping itemMacro optional because its Midi-QoL macro pass is unsupported or invalid.", { reactor: actor.name, flagKey, configured: foundry.utils.getProperty(flagData, "activity.macroPass") ?? foundry.utils.getProperty(flagData, "activity.trigger") });
+            continue;
+          }
+          if (configuredPass.toLowerCase() !== String(macroPass).toLowerCase()) continue;
+          const user = midi.playerForActor(actor);
+          const recipient = user?.active ? user : gm;
+          if (!recipient) continue;
+          const reactorToken = findTokenForActor(actor, [token]);
+          const reactor = { actor, token: reactorToken ?? token, flagKey, flagData, usesCharacterReaction: flagData.count === "reaction" || flagData.countAlt === "reaction", recipient, midi };
+          if (!countAvailable(actor, flagData, flagKey)) continue;
+          if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
+          const macroItem = await resolveExternalReactionMacroItem(actor, flagKey);
+          const itemMacro = macroItem?.flags?.itemacro?.macro ?? macroItem?.getFlag?.("itemacro", "macro");
+          if (!macroItem || typeof itemMacro?.command !== "string" || !itemMacro.command.trim()) {
+            debug("Skipping itemMacro optional because its source Item or Item Macro command could not be resolved.", { reactor: actor.name, flagKey, sourceItem: macroItem?.name });
+            continue;
+          }
+          const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken ?? token, {
+            actionKind: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
+            phase: macroPass, actionType, activity, item: workflow.item, eventFlags,
+            actionActorToken, actionActor, actionTargetToken: targets[0] ?? actionActorToken
+          }, midi);
+          if (!activationAllowed || !countAvailable(actor, flagData, flagKey)) continue;
+          if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
+          const title = `${actionActor?.name ?? "A creature"} is using ${workflow.item?.name ?? activity?.item?.name ?? "an item"} — ${actor.name}'s reaction`;
+          const value = String(flagData.label ?? `Use ${macroItem.name}`);
+          const accepted = await promptForReaction(socket, midi, reactor, workflow, null, value, flagData, title);
+          if (!accepted) continue;
+          if (!countAvailable(actor, flagData, flagKey, { ignorePaidSpellSlot: accepted?.spellSlotPaid === true })
+              || (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor))) continue;
+          const outcome = await executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken: actionActorToken, eventFlags, accepted, macroPass });
+          if (outcome.action === "cancel") {
+            log(`Item Macro trigger cancelled the remaining workflow at ${macroPass} (${flagKey}).`, outcome.trigger);
+            return { cancel: true, trigger: outcome.trigger };
+          }
+        }
+      }
+  
+    return { cancel: false };
   } catch (err) {
-    error("External itemMacro workflow interception failed; leaving the original Midi-QoL workflow unchanged.", err);
+    error(`External itemMacro workflow interception failed at ${macroPass}; leaving the original Midi-QoL workflow unchanged.`, err);
+    return { cancel: false };
+  } finally {
+    state.dispatching = false;
   }
+}
+
+async function dispatchExternalItemMacroHook(workflow, macroPass, { cancellable = false } = {}) {
+  if (!workflow) return;
+  installExternalItemMacroPassDispatcher(workflow);
+  const outcome = await dispatchExternalItemMacroStage(workflow, macroPass);
+  if (!outcome.cancel) return;
+  workflow.aborted = true;
+  if (cancellable) return false;
+}
+
+Hooks.on("midi-qol.preTargeting", async workflow => {
+  if (!workflow) return;
+  installExternalItemMacroPassDispatcher(workflow);
+  const outcome = await dispatchExternalItemMacroStage(workflow, "preTargeting");
+  if (outcome.cancel) { workflow.aborted = true; return false; }
 });
+
+Hooks.on("midi-qol.preItemRoll", async workflow => {
+  if (!workflow) return;
+  installExternalItemMacroPassDispatcher(workflow);
+  const outcome = await dispatchExternalItemMacroStage(workflow, "preItemRoll");
+  if (outcome.cancel) { workflow.aborted = true; return false; }
+});
+
+Hooks.on("midi-qol.preAttackRoll", workflow => dispatchExternalItemMacroHook(workflow, "preAttackRoll", { cancellable: true }));
+Hooks.on("midi-qol.preCheckHits", workflow => dispatchExternalItemMacroHook(workflow, "preCheckHits"));
+Hooks.on("midi-qol.preDamageRoll", workflow => dispatchExternalItemMacroHook(workflow, "preDamageRoll", { cancellable: true }));
+Hooks.on("midi-qol.preCheckSaves", workflow => dispatchExternalItemMacroHook(workflow, "preSave"));
 
 Hooks.on("midi-qol.preAttackRoll", async (workflow) => {
   try {
