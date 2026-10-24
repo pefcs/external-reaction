@@ -4,9 +4,11 @@ External Reaction extends Midi-QoL-style optional roll bonuses so a creature on 
 
 The module is designed for **Foundry Virtual Tabletop V14**, **D&D 5e 6.0.6+**, **Midi-QoL**, and **socketlib**.
 
-## Current version
+## Development version 0.10.0
 
-The source in this repository starts from **v0.9.5**, which includes optional attack/save/check/skill/damage/AC reactions, Midi-QoL activation conditions, actor/item helpers, triggered D&D 5e Activities, spell-slot payment with level selection (including Pact Magic), resource-count protection, and Midi-QoL-level-aware logging.
+This development build adds workflow-event activation flags (`cast`, `attack`, attack types, saves/checks/skills and related activity flags), an `activity.trigger = itemMacro` interception path, and structured resource receipts for selected spell slots and ItemUses/ActivityUses counts. Item macros can continue the original workflow, cancel it, or request another Activity.
+
+**Important:** `itemMacro` interception currently uses Midi-QoL's `preItemRoll` hook. This hook runs before the initiating item's normal resource consumption. Returning `cancel` aborts the workflow at this stage, so spells such as 2014 Counterspell still need an explicit, tested way to preserve the interrupted caster's spell-slot consumption if rules-accurate slot use is required. Do not treat this development build as finished Counterspell automation until that case is tested.
 
 ## Documentation
 
