@@ -838,13 +838,11 @@ function getExternalWorkflowEventFlags(workflow, context = {}) {
 const EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES = new Set(["preCheckHits", "preDamageRoll", "preSave"]);
 
 const EXTERNAL_ITEM_MACRO_PASSES = new Map([
-  ...["preTargeting", "preItemRoll", "templatePlaced", "preAttackRoll", "preCheckHits",
-    "postAttackRoll", "preDamageRoll", "postDamageRoll", "preSave", "postSave",
-    "preActiveEffects", "postActiveEffects"].map(pass => [pass.toLowerCase(), pass]),
-  ...["preStart", "postStart", "preAwaitItemCard", "postAwaitItemCard", "preAwaitTemplate", "postAwaitTemplate",
-    "preTemplatePlaced", "postTemplatePlaced", "preAoETargetConfirmation", "postAoETargetConfirmation",
-    "preValidateRoll", "postValidateRoll", "prePreambleComplete", "postPreambleComplete",
-    "preWaitForAttackRoll", "postWaitForAttackRoll", "preAttackRollComplete", "postAttackRollComplete",
+  // The dispatcher is installed at preItemRoll; earlier passes cannot be guaranteed.
+  ...["preItemRoll", "preAttackRoll", "preCheckHits", "postAttackRoll", "preDamageRoll", "postDamageRoll",
+    "preSave", "postSave", "preActiveEffects", "postActiveEffects"].map(pass => [pass.toLowerCase(), pass]),
+  // Later workflow-state passes are awaited by Midi-QoL's state transition loop.
+  ...["preWaitForAttackRoll", "postWaitForAttackRoll", "preAttackRollComplete", "postAttackRollComplete",
     "preWaitForDamageRoll", "postWaitForDamageRoll", "preConfirmRoll", "postConfirmRoll",
     "preRollConfirmed", "postRollConfirmed", "preDamageRollStarted", "postDamageRollStarted",
     "preDamageRollComplete", "postDamageRollComplete", "preWaitForUtilityRoll", "postWaitForUtilityRoll",
@@ -2306,7 +2304,7 @@ async function dispatchExternalItemMacroStage(workflow, macroPass) {
   state.seenPasses.add(passKey);
   state.dispatching = true;
   try {
-      if (!workflow || workflow.__externalReactionItemMacroHandled) return { cancel: false };
+      if (!workflow) return { cancel: false };
       const midi = game.modules.get("midi-qol")?.api;
       const socket = game.modules.get(MODULE_ID)?.api?.socket;
       if (!socket || !midi?.playerForActor || !midi?.midiRenderRoll) return { cancel: false };
@@ -2391,12 +2389,7 @@ async function dispatchExternalItemMacroHook(workflow, macroPass, { cancellable 
   if (cancellable) return false;
 }
 
-Hooks.on("midi-qol.preTargeting", async workflow => {
-  if (!workflow) return;
-  installExternalItemMacroPassDispatcher(workflow);
-  const outcome = await dispatchExternalItemMacroStage(workflow, "preTargeting");
-  if (outcome.cancel) { workflow.aborted = true; return false; }
-});
+Hooks.on("midi-qol.preTargeting", workflow => installExternalItemMacroPassDispatcher(workflow));
 
 Hooks.on("midi-qol.preItemRoll", async workflow => {
   if (!workflow) return;
