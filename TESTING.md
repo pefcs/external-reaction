@@ -15,6 +15,7 @@ Test in a disposable world. These checks have only had static syntax validation;
 - [ ] `activation = cast` matches spell items; `activation = attack` and `mwak`/`rwak`/`msak`/`rsak` match the appropriate activity type.
 - [ ] `activation = canSee && actor.range <= 60 && cast` rejects a caster that is invisible or out of range and offers only for a qualifying spell cast.
 - [ ] Accept with `count = spellslot 3`; verify the macro receives `externalReaction.resource.level`, slot pool, and before/after receipt.
+- [ ] For a reaction-cost case, use `count = reaction` and `countAlt = spellslot 3`; verify the reaction and spell slot are both consumed exactly once.
 - [ ] If the Item Macro launches a normal spell Activity, verify slot consumption occurs once—not once in External Reaction and again in the Activity.
 - [ ] Accept with `count = ItemUses.SomeFeature`; verify exactly one use is spent on the reactor's client and a matching `itemUsage` receipt reaches the macro.
 - [ ] Return `0`, `false`, or `continue`; the original action proceeds normally.
