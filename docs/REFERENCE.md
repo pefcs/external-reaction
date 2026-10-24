@@ -176,7 +176,7 @@ The normal Activity trigger runs **after the reactor accepts** the optional-reac
 
 #### Item Macro workflow interception
 
-Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro at the `postActiveEffects` stage by default, matching Midi-QoL's standard default OnUse macro pass. A bare `ItemMacro` with no pass extension therefore runs at `postActiveEffects`. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect; if that cannot be found, External Reaction falls back to an Actor-owned Item whose name, identifier, or ID matches `NAME`. Put the macro on that Item.
+Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro at the `postActiveEffects` stage by default, as External Reaction's configured default for a bare trigger. A bare `ItemMacro` with no pass extension therefore runs at `postActiveEffects`. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect; if that cannot be found, External Reaction falls back to an Actor-owned Item whose name, identifier, or ID matches `NAME`. Put the macro on that Item.
 
 Choose a different workflow stage in either of these equivalent ways:
 
