@@ -684,7 +684,7 @@ function dispositionMatches(reactor, referenceToken, qualifier) {
 }
 
 /**
- * Calculate distance from the reactor token to the current action-reference token.
+ * Calculate distance between the reactor token and another token.
  * Prefer Midi-QoL's getDistance so the active distance-measurement mode, token sizes,
  * grid units, and configured fudge factor match Midi's own range checks. Walls are not
  * applied here; visibility / line-of-sight is evaluated independently by CanSee.
@@ -803,13 +803,26 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
     debug("Activation condition uses self.item.has, but the reactor actor is unavailable; condition rejected.");
     return false;
   }
-  const activationRange = getExternalActivationRange(midi, reactorToken, targetToken);
-  // Avoid JS's coercion of null/undefined in expressions such as `range <= 40` when
-  // the tokens are unavailable or the distance helper cannot measure them.
-  if (/\brange\b/i.test(String(expression)) && !Number.isFinite(activationRange)) {
-    debug("Activation condition references range, but a valid token distance is unavailable; condition rejected.", {
+  // The legacy bare `range` continues to mean reactor-to-action-target distance.
+  // The explicit actor.range and target.range aliases let conditions choose the other
+  // endpoint without changing existing worlds' behavior.
+  const targetRange = getExternalActivationRange(midi, reactorToken, targetToken);
+  const actorRange = getExternalActivationRange(midi, reactorToken, actionActorToken);
+  const expressionText = String(expression);
+  const usesBareRange = /(?<![.\\w])range\\b/i.test(expressionText);
+  const usesActorRange = /\\bactor\\s*\\.\\s*range\\b/i.test(expressionText);
+  const usesTargetRange = /\\btarget\\s*\\.\\s*range\\b/i.test(expressionText);
+  // Avoid JS's coercion of undefined in comparisons when a referenced token distance
+  // is unavailable. Only require the specific distance(s) the expression actually uses.
+  if ((usesBareRange && !Number.isFinite(targetRange))
+      || (usesActorRange && !Number.isFinite(actorRange))
+      || (usesTargetRange && !Number.isFinite(targetRange))) {
+    debug("Activation condition references a range whose token distance is unavailable; condition rejected.", {
       reactor: reactor?.actor?.name,
+      actor: actionActor?.name,
       target: targetActor?.name,
+      targetRange,
+      actorRange,
       expression
     });
     return false;
@@ -976,11 +989,12 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
     conditionData.target.items ??= targetActor.items?.map(i => i.getRollData?.().item ?? i) ?? [];
     conditionData.target.equippedItems ??= conditionData.target.items.filter?.(i => i?.equipped) ?? [];
     conditionData.target.canSee = targetCanSeeReactor;
-    if (Number.isFinite(activationRange)) conditionData.target.range = activationRange;
+    if (Number.isFinite(targetRange)) conditionData.target.range = targetRange;
     conditionData.target.item = makeExternalItemConditionHelper(targetActor);
   }
 
-  if (Number.isFinite(activationRange)) conditionData.range = activationRange;
+  if (conditionData.actor && Number.isFinite(actorRange)) conditionData.actor.range = actorRange;
+  if (Number.isFinite(targetRange)) conditionData.range = targetRange;
   conditionData.CanSee = canSeeTarget;
   // Friendly/enemy and range/CanSee now describe the reaction's actual target. Use
   // actor.disposition / target.disposition when the expression needs to inspect both sides.
@@ -1044,7 +1058,9 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
       actorDisposition: getDispositionName(actionActorToken, actionActor),
       targetDisposition: getDispositionName(targetToken, targetActor),
       CanSee: conditionData.CanSee,
-      range: conditionData.range
+      range: conditionData.range,
+      actorRange: conditionData.actor?.range,
+      targetRange: conditionData.target?.range
     });
     return allowed;
   } catch (err) {
