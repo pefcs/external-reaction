@@ -2,6 +2,13 @@
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
 
+## 0.10.2 — development Item Macro source fix
+
+- Resolve the source Item by searching the reactor Actor's embedded Items for the Item that contains the matching External Reaction Active Effect when the transferred effect origin cannot be resolved.
+- Read the DAE/DIME `flags.dae.macro` command first, then fall back to the legacy `flags.itemacro.macro` command.
+- Improve diagnostics to distinguish an unresolved source Item from a missing macro command.
+- Add regression tests for a cantrip cast, `activation = cast`, and `ItemMacro, preAttackRoll`.
+
 ## 0.10.1 — development regression fix
 
 - Fixed the `midi-qol.preTargeting` listener so the dispatcher's internal boolean is not returned to Midi-QoL. A `false` return from that hook aborts item usage, which could make every action appear cancelled when no Item Macro reaction was configured.
