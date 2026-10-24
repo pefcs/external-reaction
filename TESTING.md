@@ -13,6 +13,7 @@ Test in a disposable world. Static source checks have passed, but these cases st
 - [ ] A transferred External Reaction Active Effect on an Actor-owned Item whose macro is stored under `flags.dae.macro` is resolved and invoked.
 - [ ] A transferred External Reaction Active Effect is matched back to the embedded source Item by its effect changes even if `fromUuid(effect.origin)` does not return that Item.
 - [ ] An Item Macro stored under legacy `flags.itemacro.macro` still resolves and runs.
+- [ ] If an Item's legacy `itemacro` flag scope is not registered/active, Item Macro lookup does not throw or block workflow dispatch; DAE/DIME `flags.dae.macro` still resolves normally, and missing macros fail gracefully.
 - [ ] With `activation = cast`, a cantrip spell Activity triggers at the explicitly configured `preAttackRoll` stage; confirm the test dialog reports `preAttackRoll`.
 - [ ] With no External Reaction `itemMacro` optional configured anywhere, ordinary Activities still enter their normal workflow; `midi-qol.preTargeting` must never be aborted by the dispatcher-installation hook.
 - [ ] A normal optional with an Activity UUID in `activity.trigger` still queues and uses that Activity as before.
