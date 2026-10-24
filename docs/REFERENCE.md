@@ -296,6 +296,14 @@ External Reaction follows the world setting **Midi-QoL → Debug** for browser-c
 | `All` | All of the above, plus verbose trace messages. |
 
 
+## preItemRoll and postSave cancellation notes
+
+Midi-QoL V14 calls its legacy `midi-qol.preItemRoll` hook with a payload object whose `config` field contains the usage config and live Workflow (`config.workflow`). Its V2 hook uses a payload with `workflow` directly. External Reaction resolves both forms and registers both hooks, relying on per-workflow pass deduplication to prevent two prompts. A callback with incomplete workflow/token context must not consume the pass as "seen"; later V2 dispatch may be the first callback with a usable context.
+
+For `postSave`, the native Midi-QoL `WorkflowState_SavesComplete` invokes the postSave macro and then ordinarily transitions to `WorkflowState_AllRollsComplete`, where damage details are processed. Merely setting `workflow.aborted` in the postSave callback does not reliably stop that next state in this path. External Reaction wraps the instance's save-complete state and sends it to `WorkflowState_Abort` after the native save-complete code returns when its postSave pass was cancelled, preventing later damage processing.
+
+For `preDamageRoll`, External Reaction uses Midi-QoL's cancellable `midi-qol.preDamageRoll` hook; Midi-QoL V14's implementation returns before the core damage roll when the hook result is false. If a damage roll is still produced, obtain the runtime log because the observed behavior would imply a separate or fallback roll path.
+
 ## Nested Activity use and workflow cancellation
 
 When an Item Macro returns an Activity from the same embedded Item that stores its macro command, External Reaction uses a one-shot context to suppress that Item's ordinary native on-use ItemMacro for the nested Activity; this avoids recursively prompting the same reaction. Other macro calls and Activities from other Items are not intentionally suppressed. The user's existing target selection is restored after the triggered Activity use completes.
