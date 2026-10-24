@@ -83,6 +83,8 @@ Activation-condition context:
 - Each range is measured independently. If a condition references a range whose required token is unavailable or whose distance cannot be measured, the activation condition is rejected rather than allowing JavaScript to compare an unavailable value as zero. All ranges use Midi-QoL's configured measurement behavior and do not independently account for walls; combine with `CanSee` when line of sight matters.
 - Midi-QoL's built-in activation-condition helpers are available, including helpers such as `canSee(token, target)`, `canSense`, `findNearby`, `findNearbyCount`, `checkNearby`, `hasCondition`, `checkDefeated`, `checkIncapacitated`, `getDistance`, `computeDistance`, `checkDistance`, `checkActivityRange`, `fromUuidSync`, and `sizeNumeric`, plus helpers supplied by the installed Midi-QoL build.
 - Module flags and roll data accessible to the evaluator can be referenced. Arbitrary global functions from another module are not automatically imported: they must be exposed to Midi-QoL's activation evaluator or available through the supplied data, just as with Midi-QoL conditions generally.
+- Workflow event booleans can be used as bare identifiers: `cast`, `attack`, `mwak`, `rwak`, `msak`, `rsak`, `save`, `check`, `skill`, `damage`, `heal`, `concentration`, `deathSave`, `initiative`, `tool`, `utility`, and `itemUse`. They are Boolean flags, not functions. They are true only when the current workflow context identifies that event/type. The initial `itemMacro` interceptor runs at `midi-qol.preItemRoll`; it detects item/activity use and does not independently subscribe to separate concentration, death-save, initiative, or movement events.
+- For item/activity workflows, `cast` can be true at the same time as `attack`, `save`, `check`, or `skill`; for example, a spell with a saving-throw activity is still a cast. The action-type flags `mwak`, `rwak`, `msak`, and `rsak` match the workflow/activity action type.
 
 Examples (set as the value of `flags.external-reaction.optional.NAME.activation`):
 
@@ -170,7 +172,33 @@ Add this Active Effect change to the same `flags.external-reaction.optional.NAME
 |---|---|
 | `flags.external-reaction.optional.NAME.activity.trigger` | `Actor.abc123.Item.def456.Activity.ghi789` |
 
-The trigger runs **after the reactor accepts** the optional-reaction prompt. It runs on the reactor's owning user's client (or the GM fallback), then the original optional bonus/reaction continues through its existing processing. If the player cancels the triggered Activity's target selector, the triggered Activity is skipped but the already-accepted optional bonus still resolves.
+The normal Activity trigger runs **after the reactor accepts** the optional-reaction prompt. It runs on the reactor's owning user's client (or the GM fallback), then the original optional bonus/reaction continues through its existing processing. If the player cancels the triggered Activity's target selector, the triggered Activity is skipped but the already-accepted optional bonus still resolves.
+
+#### Item Macro workflow interception
+
+Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro as a decision point during the triggering item's `midi-qol.preItemRoll` hook. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect; if that cannot be found, External Reaction falls back to an Actor-owned Item whose name, identifier, or ID matches `NAME`. Put the macro on that Item.
+
+Activation conditions are checked before the prompt. At this interception point, `actor` is the initiating actor (for Counterspell, the caster), `actor.range` is the reactor-to-initiator distance, `CanSee`/bare `canSee` describes the reactor seeing the initiating token, and flags such as `cast`/`attack` describe the initiating item workflow.
+
+The Item Macro receives the original live `workflow` and these additional values:
+
+- `externalReaction.trigger`: `type`, `eventFlags`, `phase`, `workflowId`, `actorUuid`, `itemUuid`, `activityUuid`, `spellLevel`, `reactorUuid`, and `flagKey`.
+- `externalReaction.resource`: the first resource receipt, or `null`.
+- `externalReaction.resources`: an array of resource receipts.
+- Top-level aliases `resource`, `resources`, `reactor`, and `reactorToken` are also provided. The macro's `actor` is the reactor; `target` is the initiating token; `targetActor` is the initiating actor.
+
+Supported Item Macro return values:
+
+| Return value | Meaning |
+|---|---|
+| `"cancel"` or `{ action: "cancel" }` | Abort the original Midi-QoL workflow by returning `false` from `preItemRoll`. |
+| `0`, `false`, `null`, `undefined`, or `"continue"` | Continue the original workflow unchanged. |
+| An Activity UUID/reference string or Activity document | Use that Activity on the reactor's client, then continue the original workflow. |
+| `{ action: "activity", activityUuid: "...", cancelOriginal: true }` | Use the Activity, then cancel the original workflow. Omit `cancelOriginal` to continue it. |
+
+For example, a macro can read `externalReaction.trigger.spellLevel` and `externalReaction.resource.level`, make a check, then return `"cancel"` on success or `0` on failure. A spell-slot receipt has `type: "spellSlot"`, `pool` (`spell` or `pact`), `slotKey`, `level`, `amount`, `consumed`, `before`, `after`, and `resourcePath`. An ItemUses/ActivityUses receipt has `type: "itemUsage"`, `actorUuid`, `itemUuid`, optional `activityUuid`, `amount`, `consumed`, availability `before`/`after`, spent `beforeSpent`/`afterSpent`, and the resource path/count expression.
+
+**Timing limitation:** `preItemRoll` is before the original item's normal resource consumption. Returning `"cancel"` aborts at that point. This is useful for pre-use guards/interception, but a rules-accurate 2014 Counterspell setup must also handle consumption of the interrupted caster's slot; this build does not automatically spend that original slot. The reactor's selected `spellslot X` is separately paid by External Reaction.
 
 Activity reference formats supported:
 
