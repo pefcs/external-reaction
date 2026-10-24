@@ -2114,6 +2114,7 @@ function getExternalSpellLevel(workflow) {
     workflow?.item?.system?.level
   ];
   for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null || String(candidate).trim() === "") continue;
     const value = Number(candidate);
     if (Number.isFinite(value) && value >= 0) return value;
   }
@@ -2243,6 +2244,14 @@ Hooks.on("midi-qol.preItemRoll", async (workflow) => {
     const eventFlags = getExternalWorkflowEventFlags(workflow, { actionType, activity, item: workflow.item, itemUse: true });
     const actionActorToken = getWorkflowToken(workflow);
     const actionActor = workflow.actor ?? actionActorToken?.actor;
+    // Cross-actor spatial reactions require a real scene token for the triggering actor.
+    // Do not let a missing token turn CanSee or actor.range into a self-token false positive.
+    if (!actionActorToken?.actor || actionActorToken.actor.uuid !== actionActor?.uuid) {
+      debug("Skipping itemMacro interception because the initiating actor has no matching scene token.", {
+        actor: actionActor?.name, item: workflow.item?.name
+      });
+      return;
+    }
     const targets = [...(workflow.targets ?? [])];
     const actorMap = collectSceneActors([actionActorToken, ...targets].filter(Boolean));
     const gm = game.users.find(user => user.active && user.isGM);
