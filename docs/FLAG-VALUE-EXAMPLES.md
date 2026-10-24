@@ -175,6 +175,11 @@ Set the following as the value of `flags.external-reaction.optional.NAME.activat
 | `flags.external-reaction.optional.NAME.activation` | Override | `range <= 30` — Require the reactor to be within 30 scene distance units of the action target. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `range <= 30 && CanSee` — Require range and visibility. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `range > 5 && range <= 30` — Require distance greater than 5 and no more than 30 units. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `actor.range <= 30` — Require the reactor to be within 30 scene units of the initiating actor, such as the attacker or caster. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `target.range <= 30` — Require the reactor to be within 30 scene units of the action target; explicit equivalent of `range <= 30`. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `actor.range <= 30 && target.range <= 10` — Require the initiating actor to be within 30 units and the action target to be within 10 units of the reactor. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `actor.range < target.range` — Require the initiating actor to be closer to the reactor than the action target is. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `actor.range <= 60 && target.range <= 30 && CanSee` — Require both distance limits and visibility to the action target. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `actor != self` — Require the initiating Actor to differ from the reactor. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `target == self` — Require the action target to be the same Actor as the reactor. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `actor != self && target == self` — Require another Actor to initiate an action targeting the reactor. |
@@ -191,7 +196,7 @@ Set the following as the value of `flags.external-reaction.optional.NAME.activat
 | `flags.external-reaction.optional.NAME.activation` | Override | `friendly && range <= 30 && CanSee` — Require a friendly target within range and visible. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `target.disposition != "friendly" && CanSee` — Require a non-Friendly target the reactor can see. |
 
-Context reminder: `self` / `reactor` is the Actor owning the option; `actor` is the initiating Actor; `target` is the action recipient. For damage reactions, `target` is the first available affected target. `range` uses Midi-QoL's distance measurement and does not itself account for walls; combine it with `CanSee` when appropriate.
+Context reminder: `self` / `reactor` is the Actor owning the option; `actor` is the initiating Actor; `target` is the action recipient. For damage reactions, `target` is the first available affected target. Bare `range` remains the distance from the reactor to `target` for backward compatibility. `actor.range` measures reactor-to-initiator distance, while `target.range` explicitly measures reactor-to-action-target distance. All use Midi-QoL's distance measurement and do not themselves account for walls; combine with `CanSee` when appropriate. If a required token/distance is unavailable, the condition is rejected.
 
 ## 8. Usage counts and resource costs
 
