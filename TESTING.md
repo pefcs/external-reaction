@@ -12,7 +12,7 @@ Test in a disposable world. Static source checks have passed, but these cases st
 
 - [ ] With no External Reaction `itemMacro` optional configured anywhere, ordinary Activities still enter their normal workflow; `midi-qol.preTargeting` must never be aborted by the dispatcher-installation hook.
 - [ ] A normal optional with an Activity UUID in `activity.trigger` still queues and uses that Activity as before.
-- [ ] `activity.trigger = itemMacro` with no pass dispatches at `postActiveEffects`, matching Midi-QoL's default OnUse macro pass. No prompt should be shown before then.
+- [ ] `activity.trigger = itemMacro` with no pass dispatches at `postActiveEffects`, as External Reaction's configured default for a bare trigger. No prompt should be shown before then.
 - [ ] `activity.trigger = "ItemMacro, postAttackRoll"` and separate `activity.macroPass = postAttackRoll` both override the default and prompt only after attack and hit/miss evaluation.
 - [ ] At `postAttackRoll`, the macro sees the completed attack roll and known hit/miss result; returning `"cancel"` leaves the attack result visible but prevents the normal damage roll and later processing.
 - [ ] `preCheckHits` triggers after the attack roll but before hit adjudication; cancellation prevents the hit-check stage and later damage processing.
