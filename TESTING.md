@@ -6,12 +6,20 @@ This is a regression-focused patch release on top of the v0.9.0 Activity-trigger
 
 > Test in a copy of your world. Static code/manifest/ZIP checks have been run; the regression cases below still require verification inside Foundry. v0.9.2 fixes triggered Activity target application for Foundry V14; v0.9.3 queues/deduplicates Activity triggers until all optional reaction prompts in the batch are resolved; v0.9.4 adds `spellslot X` count/countAlt support with an ordinary/Pact Magic slot selector and cancel-safe payment; v0.9.5 aligns console logging with Midi-QoL Debug and makes spell-slot dialog cancellation a silent opt-out.
 
-## New development tests — v0.10.0 Item Macro interception
+## New development tests — v0.10.0 configurable Item Macro stages
 
-Test in a disposable world. These checks have only had static syntax validation; they still require in-Foundry testing against Foundry 14.369, D&D 5e 6.0.6, Midi-QoL 14.6.4, and socketlib.
+Test in a disposable world. Static source checks have passed, but these cases still require in-Foundry verification against Foundry 14.369, D&D 5e 6.0.6, Midi-QoL 14.6.4, and socketlib.
 
 - [ ] A normal optional with an Activity UUID in `activity.trigger` still queues and uses that Activity as before.
-- [ ] An Active Effect with `activity.trigger = itemMacro` prompts before the initiating item's roll begins.
+- [ ] `activity.trigger = itemMacro` with no pass prompts at `preItemRoll` before the initiating item's roll begins.
+- [ ] `activity.trigger = "ItemMacro, postAttackRoll"` and separate `activity.macroPass = postAttackRoll` both prompt only after attack and hit/miss evaluation.
+- [ ] At `postAttackRoll`, the macro sees the completed attack roll and known hit/miss result; returning `"cancel"` leaves the attack result visible but prevents the normal damage roll and later processing.
+- [ ] `preCheckHits` triggers after the attack roll but before hit adjudication; cancellation prevents the hit-check stage and later damage processing.
+- [ ] `preDamageRoll` triggers at Midi-QoL's awaited pre-damage hook; cancellation prevents the damage roll. `postDamageRoll` runs after the damage roll and cancels later processing.
+- [ ] `preSave` triggers through `midi-qol.preCheckSaves` when automatic save checking is enabled; cancellation prevents save resolution from continuing.
+- [ ] `preActiveEffects` uses Midi-QoL's `haltEffectsApplication` result to prevent later Active Effect application; damage or earlier processing may already have happened. `postActiveEffects` is after effects have already been applied.
+- [ ] Unsupported stages such as `preDamageApplication`, `preAttackRollConfig`, `preDamageRollConfig`, and `damageBonus` are skipped rather than treated as cancellation stages.
+- [ ] Invalid/unknown pass names are skipped with a debug message; `all` is not accepted.
 - [ ] `activation = cast` matches spell items; `activation = attack` and `mwak`/`rwak`/`msak`/`rsak` match the appropriate activity type.
 - [ ] `activation = canSee && actor.range <= 60 && cast` rejects a caster that is invisible or out of range and offers only for a qualifying spell cast.
 - [ ] Accept with `count = spellslot 3`; verify the macro receives `externalReaction.resource.level`, slot pool, and before/after receipt.
@@ -19,12 +27,16 @@ Test in a disposable world. These checks have only had static syntax validation;
 - [ ] If the Item Macro launches a normal spell Activity, verify slot consumption occurs once—not once in External Reaction and again in the Activity.
 - [ ] Accept with `count = ItemUses.SomeFeature`; verify exactly one use is spent on the reactor's client and a matching `itemUsage` receipt reaches the macro.
 - [ ] Return `0`, `false`, or `continue`; the original action proceeds normally.
-- [ ] Return `cancel`; the original item workflow is aborted before its normal resource consumption.
+- [ ] Return `true` or `cancel` at `preItemRoll`; the original workflow aborts before later processing.
+- [ ] Return `cancel` at `postAttackRoll`; earlier attack roll and hit result remain visible, while later processing is aborted.
+- [ ] Return `cancel` at `preCheckHits`; confirm hit adjudication and damage are prevented. Return `cancel` at `preDamageRoll`; confirm the damage roll is prevented.
 - [ ] Return an Activity UUID string; that Activity runs on the reactor's client and the original action continues.
 - [ ] Return `{ action: "activity", activityUuid: "...", cancelOriginal: true }`; the Activity runs and the original action is cancelled.
 - [ ] Confirm a flag with `activity.trigger = itemMacro` is not also processed as an ordinary roll-bonus/Activity-trigger option.
 - [ ] Confirm an Item Macro error, unresolved Activity, missing source Item, or missing Item Macro leaves the original workflow unchanged and logs a useful message.
-- [ ] **Counterspell 2014 outstanding rule test:** the original workflow is cancelled on a successful Counterspell check, but this build does not yet expend the original caster's slot before aborting at `preItemRoll`. Do not treat this as fully rules-accurate until original resource handling is solved and verified.
+- [ ] **Counterspell 2014 outstanding rule test:** cancelling at `preItemRoll` does not automatically consume the original caster's spell slot. Do not treat that case as rules-accurate until original resource handling is solved and verified.
+- [ ] For later-stage cancellation, confirm resources and effects already consumed/applied by that stage are not assumed to be automatically restored.
+
 
 ## 1. Preparation
 
