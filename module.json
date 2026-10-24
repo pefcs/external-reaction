@@ -2,7 +2,7 @@
   "id": "external-reaction",
   "title": "External Reaction",
   "description": "Adds scene-wide, Midi-QoL-style optional reactions and configurable roll bonuses for D&D 5e.",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "compatibility": {
     "minimum": "14",
     "verified": "14.369"
