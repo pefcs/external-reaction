@@ -198,7 +198,7 @@ Supported Item Macro return values:
 
 For example, a macro can read `externalReaction.trigger.spellLevel` and `externalReaction.resource.level`, make a check, then return `"cancel"` on success or `0` on failure. A spell-slot receipt has `type: "spellSlot"`, `pool` (`spell` or `pact`), `slotKey`, `level`, `amount`, `consumed`, `before`, `after`, and `resourcePath`. An ItemUses/ActivityUses receipt has `type: "itemUsage"`, `actorUuid`, `itemUuid`, optional `activityUuid`, `amount`, `consumed`, availability `before`/`after`, spent `beforeSpent`/`afterSpent`, and the resource path/count expression.
 
-**Timing limitation:** `preItemRoll` is before the original item's normal resource consumption. Returning `"cancel"` aborts at that point. This is useful for pre-use guards/interception, but a rules-accurate 2014 Counterspell setup must also handle consumption of the interrupted caster's slot; this build does not automatically spend that original slot. The reactor's selected `spellslot X` is separately paid by External Reaction.
+**Timing limitation:** `preItemRoll` is before the original item's normal resource consumption. Returning `"cancel"` aborts at that point. This is useful for pre-use guards/interception, but a rules-accurate 2014 Counterspell setup must also handle consumption of the interrupted caster's slot; this build does not automatically spend that original slot. The reactor's selected `spellslot X` is separately paid by External Reaction. If the Item Macro also launches a normal spell Activity that consumes a spell slot, verify that the same cast is not charged twice. For Counterspell, choose one owner for slot payment: External Reaction's selector or the Counterspell Activity, not both.
 
 Activity reference formats supported:
 
