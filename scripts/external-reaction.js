@@ -2434,6 +2434,10 @@ function installExternalItemMacroPassDispatcher(workflow) {
   if (state.originalCallMacros) return true;
   state.originalCallMacros = workflow.callMacros;
   workflow.callMacros = async function(item, macros, tag, macroPass, ...rest) {
+    // The early preTargeting hook can receive a partial usage context; perform
+    // the one-shot match again with the actual Workflow as soon as it dispatches
+    // a macro pass, before the native ItemMacro can recurse.
+    markExternalTriggeredActivityWorkflow(this);
     let effectiveMacros = macros;
     const suppressItemUuid = this.__externalReactionSuppressItemMacroUuid;
     if (tag === "OnUse" && suppressItemUuid && item?.uuid === suppressItemUuid && typeof macros === "string") {
