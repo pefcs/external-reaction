@@ -404,6 +404,13 @@ Create a reactor with at least one ordinary spell slot and, if possible, a Pact 
 - [ ] Triggered Activity can still start a nested workflow after the original reaction count locks have been released.
 
 
+## v0.10.4 preItemRoll and postSave regression cases
+
+- [ ] Configure `ItemMacro, preItemRoll`, cast a spell with the eligible reactor on the scene, and verify the reaction prompt appears before attack/save/damage rolling and before normal resource consumption.
+- [ ] At `preItemRoll`, choose Continue and verify the original workflow proceeds; choose Cancel and verify the original item use is aborted before its roll.
+- [ ] Configure `ItemMacro, postSave` on a save-and-damage spell. Choose Cancel after the saving throw result is determined; the save result may remain, but no subsequent damage should be rolled/applied.
+- [ ] Configure `ItemMacro, preDamageRoll`. Choose Cancel and record whether a damage roll card/configurator is created. The intended result is that Midi-QoL's pre-damage hook blocks the roll itself and no damage is applied. If any roll is still created, preserve the console log from the reaction prompt through the end of the workflow for diagnosis.
+
 ## v0.10.3 workflow interception regression cases
 
 - [ ] For an External Reaction-owned Item Macro, verify the command is stored on the source Item but `ItemMacro` is **not** assigned to any Midi-QoL On Use Macro stage on that Item. The reaction macro should run only through External Reaction; no duplicate/recursive call should occur.
