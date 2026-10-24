@@ -2223,7 +2223,7 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
         actorUuid: reactor.actor.uuid, tokenUuid, trigger: activityDocument.uuid ?? activityReference
       });
       if (started === false) debug("Item Macro returned an Activity, but its use was cancelled or unavailable.", { flagKey, activityReference });
-      return { action: cancelOriginalAfterActivity ? "cancel" : "continue", trigger: eventContext, activityUuid: activityDocument.uuid };
+      return { action: cancelOriginalAfterActivity && started !== false ? "cancel" : "continue", trigger: eventContext, activityUuid: activityDocument.uuid };
     } catch (err) {
       error(`Could not trigger the Activity returned by the Item Macro for ${reactor.actor?.name}.`, err);
       return { action: "continue", trigger: eventContext };
