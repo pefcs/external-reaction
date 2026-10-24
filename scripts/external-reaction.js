@@ -838,7 +838,8 @@ function getExternalWorkflowEventFlags(workflow, context = {}) {
   };
 }
 
-const EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES = new Set(["preCheckHits", "preDamageRoll", "preSave"]);
+// These values are compared against lower-cased macro-pass names.
+const EXTERNAL_ITEM_MACRO_HOOK_ONLY_PASSES = new Set(["precheckhits", "predamageroll", "presave"]);
 
 const EXTERNAL_ITEM_MACRO_PASSES = new Map([
   // The dispatcher is installed at preItemRoll; earlier passes cannot be guaranteed.
@@ -1689,17 +1690,19 @@ async function flushExternalTriggeredActivities(workflow, socket) {
  * Reaction prompts and saving-throw / attack roll integration
  * ------------------------------------------------------------------------- */
 
-async function promptForReaction(socket, midi, reactor, workflow, roll, value, flagData, title) {
+async function promptForReaction(socket, midi, reactor, workflow, roll, value, flagData, title, context = {}) {
+  const initiatingActor = context.actionActor ?? workflow?.actor;
+  const initiatingItem = context.item ?? workflow?.item ?? workflow?.activity?.item;
   let rollHTML = roll
     ? await midi.midiRenderRoll(roll)
-    : `<div class="external-reaction-trigger-preview"><strong>${escapeExternalActivityHTML(workflow?.actor?.name ?? "A creature")}</strong> is using <strong>${escapeExternalActivityHTML(workflow?.item?.name ?? workflow?.activity?.item?.name ?? "an item")}</strong>.</div>`;
+    : `<div class="external-reaction-trigger-preview"><strong>${escapeExternalActivityHTML(initiatingActor?.name ?? "A creature")}</strong> is using <strong>${escapeExternalActivityHTML(initiatingItem?.name ?? "an item")}</strong>.</div>`;
   const rollMode = resolveExternalRollMode(flagData, roll);
   if (rollMode === "blindroll" && !reactor.recipient?.isGM) rollHTML = "Hidden Roll";
   const liveCountData = getLiveCountData(reactor.actor, flagData, reactor.flagKey) ?? flagData;
   const spellSlotMinimum = getSpellSlotMinimum(liveCountData);
   const response = await socket.executeAsUser("promptReaction", reactor.recipient.id, {
-    actorName: workflow.actor?.name ?? "Unknown actor",
-    itemName: workflow.item?.name ?? workflow.activity?.item?.name ?? "Unknown action",
+    actorName: initiatingActor?.name ?? "Unknown actor",
+    itemName: initiatingItem?.name ?? "Unknown action",
     actorUuid: reactor.actor?.uuid,
     spellSlotMinimum,
     title,
@@ -2305,7 +2308,7 @@ function getExternalSpellLevel(workflow) {
   return null;
 }
 
-async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken, eventFlags, accepted, macroPass = "preItemRoll" }) {
+async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken, eventFlags, accepted, macroPass = "preItemRoll", stageContext = {} }) {
   const macroItem = await resolveExternalReactionMacroItem(reactor.actor, flagKey);
   const macroDataFlag = getExternalItemMacroData(macroItem);
   if (!macroItem || typeof macroDataFlag?.command !== "string" || !macroDataFlag.command.trim()) {
@@ -2334,19 +2337,25 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
     return { action: "continue" };
   }
   resourceReceipts.push(...(consumed.resources ?? []));
-  const actionActorToken = getWorkflowToken(workflow);
-  const actionActor = workflow?.actor ?? actionActorToken?.actor ?? null;
-  const activity = workflow?.activity ?? workflow?.item?.system?.activities?.get?.(workflow?.activityId) ?? null;
+  const actionActorToken = normalizeToken(stageContext.actionActorToken) ?? getWorkflowToken(workflow);
+  const activity = workflow?.activity ?? workflow?.item?.system?.activities?.get?.(workflow?.activityId) ?? stageContext.activity ?? null;
+  const initiatingItem = workflow?.item ?? activity?.item ?? stageContext.item ?? null;
+  const actionActor = workflow?.actor ?? stageContext.actionActor ?? actionActorToken?.actor ?? initiatingItem?.actor ?? null;
   const eventContext = {
     type: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
     eventFlags, phase: macroPass, macroPass, workflowId: workflow?.uuid ?? workflow?.id ?? null,
-    actorUuid: actionActor?.uuid ?? null, itemUuid: workflow?.item?.uuid ?? activity?.item?.uuid ?? null,
+    actorUuid: actionActor?.uuid ?? null, itemUuid: initiatingItem?.uuid ?? null,
     activityUuid: activity?.uuid ?? null, spellLevel: getExternalSpellLevel(workflow),
     reactorUuid: reactor.actor?.uuid, flagKey
   };
   const macroData = workflow.getMacroData?.() ?? {};
   macroData.macroPass = macroPass;
   macroData.workflow = workflow;
+  // Midi-QoL's preItemRoll hook may run before the live Workflow copies every
+  // convenience field from the use context. Expose known context explicitly.
+  if (actionActor && !macroData.initiatingActor) macroData.initiatingActor = actionActor;
+  if (initiatingItem && !macroData.initiatingItem) macroData.initiatingItem = initiatingItem;
+  if (activity && !macroData.initiatingActivity) macroData.initiatingActivity = activity;
   macroData.tag = "externalReaction";
   macroData.actor = reactor.actor;
   macroData.token = normalizeToken(reactor.token) ?? findTokenForActor(reactor.actor);
@@ -2497,7 +2506,7 @@ function installExternalItemMacroPassDispatcher(workflow) {
   return true;
 }
 
-async function dispatchExternalItemMacroStage(workflow, macroPass) {
+async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext = {}) {
   if (!workflow) return { cancel: false };
   const state = getExternalItemMacroDispatchState(workflow);
   const passKey = String(macroPass ?? "").toLowerCase();
@@ -2508,22 +2517,27 @@ async function dispatchExternalItemMacroStage(workflow, macroPass) {
       const midi = game.modules.get("midi-qol")?.api;
       const socket = game.modules.get(MODULE_ID)?.api?.socket;
       if (!socket || !midi?.playerForActor || !midi?.midiRenderRoll) return { cancel: false };
-      const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
-      const actionType = String(activity?.actionType ?? activity?.system?.actionType ?? workflow.item?.system?.actionType ?? "").toLowerCase();
-      const eventFlags = getExternalWorkflowEventFlags(workflow, { actionType, activity, item: workflow.item, itemUse: true });
-      const actionActorToken = getWorkflowToken(workflow);
-      const actionActor = workflow.actor ?? actionActorToken?.actor;
-      // A hook may fire with an incomplete/legacy usage payload. Do not mark the pass
-      // as seen until it has a live workflow plus the initiating scene token; a later
-      // V2 hook for the same use must still be allowed to dispatch.
+      const activity = stageContext.activity ?? workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
+      const item = stageContext.item ?? workflow.item ?? activity?.item ?? null;
+      const actionType = String(stageContext.actionType ?? activity?.actionType ?? activity?.system?.actionType ?? item?.system?.actionType ?? "").toLowerCase();
+      const eventFlags = getExternalWorkflowEventFlags(workflow, { ...stageContext, actionType, activity, item, itemUse: true });
+      const actionActorToken = normalizeToken(stageContext.actionActorToken) ?? getWorkflowToken(workflow) ?? findTokenForActor(stageContext.actionActor ?? item?.actor);
+      const actionActor = workflow.actor ?? stageContext.actionActor ?? actionActorToken?.actor ?? item?.actor;
+      // Do not mark the pass as seen until the hook supplies a valid initiating token.
       if (!actionActorToken?.actor || actionActorToken.actor.uuid !== actionActor?.uuid) {
         debug("Skipping itemMacro interception because the initiating actor has no matching scene token/workflow context.", {
-          actor: actionActor?.name, item: workflow.item?.name, macroPass
+          actor: actionActor?.name, item: item?.name, macroPass
+        });
+        return { cancel: false };
+      }
+      if (!Object.values(eventFlags).some(Boolean)) {
+        debug("Skipping itemMacro interception because no workflow event flags were identified.", {
+          actor: actionActor?.name, item: item?.name, macroPass, actionType
         });
         return { cancel: false };
       }
       state.seenPasses.add(passKey);
-      const targets = [...(workflow.targets ?? [])];
+      const targets = [...(stageContext.targets ?? workflow.targets ?? game.user.targets ?? [])].map(normalizeToken).filter(Boolean);
       const actorMap = collectSceneActors([actionActorToken, ...targets].filter(Boolean));
       const gm = game.users.find(user => user.active && user.isGM);
       
@@ -2557,19 +2571,24 @@ async function dispatchExternalItemMacroStage(workflow, macroPass) {
             continue;
           }
           const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken ?? token, {
-            actionKind: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
-            phase: macroPass, actionType, activity, item: workflow.item, eventFlags,
+            ...stageContext, actionKind: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
+            phase: macroPass, actionType, activity, item, eventFlags,
             actionActorToken, actionActor, actionTargetToken: targets[0] ?? actionActorToken
           }, midi);
           if (!activationAllowed || !countAvailable(actor, flagData, flagKey)) continue;
           if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
-          const title = `${actionActor?.name ?? "A creature"} is using ${workflow.item?.name ?? activity?.item?.name ?? "an item"} — ${actor.name}'s reaction`;
+          const title = `${actionActor?.name ?? "A creature"} is using ${item?.name ?? activity?.item?.name ?? "an item"} — ${actor.name}'s reaction`;
           const value = String(flagData.label ?? `Use ${macroItem.name}`);
-          const accepted = await promptForReaction(socket, midi, reactor, workflow, null, value, flagData, title);
+          const promptContext = { actionActor, item, activity };
+          const accepted = await promptForReaction(socket, midi, reactor, workflow, null, value, flagData, title, promptContext);
           if (!accepted) continue;
           if (!countAvailable(actor, flagData, flagKey, { ignorePaidSpellSlot: accepted?.spellSlotPaid === true })
               || (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor))) continue;
-          const outcome = await executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken: actionActorToken, eventFlags, accepted, macroPass });
+          const outcome = await executeExternalItemMacroTrigger({
+            reactor, workflow, flagKey, flagData, recipient, socket,
+            triggerToken: actionActorToken, eventFlags, accepted, macroPass,
+            stageContext: { ...stageContext, actionActorToken, actionActor, item, activity }
+          });
           if (outcome.action === "cancel") {
             log(`Item Macro trigger cancelled the remaining workflow at ${macroPass} (${flagKey}).`, outcome.trigger);
             return { cancel: true, trigger: outcome.trigger };
@@ -2612,23 +2631,96 @@ Hooks.on("midi-qol.preTargetingV2", workflow => {
   installExternalItemMacroPassDispatcher(workflow);
 });
 
-async function dispatchExternalPreItemRollHook(workflow) {
-  if (!workflow || typeof workflow.callMacros !== "function" || !workflow.item || !workflow.actor) return;
+function describeExternalPreItemRollHookArg(value) {
+  if (!value || typeof value !== "object") return { type: typeof value, value: String(value) };
+  return {
+    type: Array.isArray(value) ? "Array" : value.constructor?.name ?? "Object",
+    keys: Object.keys(value).slice(0, 12),
+    hasCallMacro: typeof value.callMacro === "function",
+    hasCallMacros: typeof value.callMacros === "function",
+    hasWorkflow: !!value.workflow,
+    actor: value.actor?.name ?? value.actor?.document?.name ?? null,
+    item: value.item?.name ?? null,
+    activity: value.activity?.name ?? value.name ?? null
+  };
+}
+
+function findExternalPreItemRollWorkflow(hookArgs) {
+  const queue = [...hookArgs];
+  const visited = new Set();
+  const relatedKeys = ["workflow", "config", "usage", "context", "data"];
+  while (queue.length) {
+    const value = queue.shift();
+    if (!value || typeof value !== "object" || visited.has(value)) continue;
+    visited.add(value);
+    if (typeof value.callMacro === "function"
+        && (value.item || value.activity?.item || value.getMacroData)
+        && (value.actor || value.token?.actor || value.item?.actor || value.activity?.item?.actor)) return value;
+    if (Array.isArray(value)) {
+      queue.unshift(...value.slice(0, 12));
+      continue;
+    }
+    for (const key of relatedKeys) if (value[key] && typeof value[key] === "object") queue.unshift(value[key]);
+  }
+  return null;
+}
+
+async function dispatchExternalPreItemRollHook(...hookArgs) {
+  const workflow = findExternalPreItemRollWorkflow(hookArgs);
+  const argDescriptions = hookArgs.map(describeExternalPreItemRollHookArg);
+  if (!workflow) {
+    debug("preItemRoll hook fired, but no usable live Workflow with callMacro was exposed; skipping this callback.", { hookArgs: argDescriptions });
+    return;
+  }
+
+  const queue = [...hookArgs];
+  const visited = new Set();
+  let activity = workflow.activity ?? null;
+  let token = normalizeToken(workflow.token);
+  let config = null;
+  while (queue.length) {
+    const value = queue.shift();
+    if (!value || typeof value !== "object" || visited.has(value)) continue;
+    visited.add(value);
+    if (!activity && value.item && (value.type || value.system?.type) && value.item.type) activity = value;
+    if (!token && (value.documentName === "Token" || value.document?.documentName === "Token" || (value.actor && value.document))) token = normalizeToken(value);
+    if (!config && (value.workflow || value.targetUuids || value.midiOptions)) config = value;
+    if (Array.isArray(value)) {
+      queue.unshift(...value.slice(0, 12));
+      continue;
+    }
+    for (const key of ["workflow", "config", "usage", "context", "data"]) if (value[key] && typeof value[key] === "object") queue.unshift(value[key]);
+  }
+  activity ??= workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
+  const item = workflow.item ?? activity?.item ?? null;
+  const actionActor = workflow.actor ?? token?.actor ?? item?.actor ?? activity?.item?.actor ?? null;
+  token ??= findTokenForActor(actionActor);
+  if (!workflow.item && item) {
+    try { workflow.item = item; } catch (_) { /* Use stageContext fallback below. */ }
+  }
+  if (!workflow.activity && activity) {
+    try { workflow.activity = activity; } catch (_) { /* Use stageContext fallback below. */ }
+  }
   installExternalItemMacroPassDispatcher(workflow);
-  const outcome = await dispatchExternalItemMacroStage(workflow, "preItemRoll");
+  const stageContext = {
+    activity, item, actionActor, actionActorToken: token,
+    targets: workflow.targets ?? config?.targets ?? [...(game.user.targets ?? [])]
+  };
+  debug("Dispatching preItemRoll interception from Midi-QoL hook.", {
+    actor: actionActor?.name, item: item?.name, activity: activity?.name,
+    token: token?.name ?? token?.document?.name,
+    workflowHasCallMacros: typeof workflow.callMacros === "function",
+    hookArgs: argDescriptions
+  });
+  const outcome = await dispatchExternalItemMacroStage(workflow, "preItemRoll", stageContext);
   if (outcome.cancel) {
     workflow.aborted = true;
     return false;
   }
 }
 
-// Legacy Midi-QoL V14 signature: (activity, token, config, dialog, message).
-// The live Workflow is on config.workflow; the first argument is only the Activity.
-// The V2 signature instead supplies the live Workflow as its first argument.
-Hooks.on("midi-qol.preItemRoll", (_activity, _token, config) =>
-  dispatchExternalPreItemRollHook(config?.workflow));
-Hooks.on("midi-qol.preItemRollV2", workflow =>
-  dispatchExternalPreItemRollHook(workflow));
+Hooks.on("midi-qol.preItemRoll", (...hookArgs) => dispatchExternalPreItemRollHook(...hookArgs));
+Hooks.on("midi-qol.preItemRollV2", (...hookArgs) => dispatchExternalPreItemRollHook(...hookArgs));
 
 // Midi-QoL 14's AttackActivity.configureAttackRoll returns false when this hook
 // returns false, but rollAttack then falls back to the base D&D5e roll path. That
