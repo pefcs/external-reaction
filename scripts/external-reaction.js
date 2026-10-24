@@ -2428,8 +2428,32 @@ function getExternalItemMacroDispatchState(workflow) {
   return workflow.__externalReactionItemMacroDispatchState;
 }
 
+function installExternalItemMacroWorkflowStateGuards(workflow) {
+  if (!workflow || typeof workflow.WorkflowState_SavesComplete !== "function"
+      || typeof workflow.WorkflowState_Abort !== "function") return false;
+  const state = getExternalItemMacroDispatchState(workflow);
+  if (state.originalSavesComplete) return true;
+  const original = workflow.WorkflowState_SavesComplete;
+  Object.defineProperty(workflow, "WorkflowState_SavesComplete", {
+    configurable: true, enumerable: false, writable: true,
+    value: async function(...args) {
+      const nextState = await original.apply(this, args);
+      if (this.__externalReactionCancelPass === "postSave") {
+        this.__externalReactionCancelPass = null;
+        debug("Routing a cancelled postSave Item Macro workflow directly to Abort before damage application.");
+        return this.WorkflowState_Abort;
+      }
+      return nextState;
+    }
+  });
+  state.originalSavesComplete = original;
+  return true;
+}
+
 function installExternalItemMacroPassDispatcher(workflow) {
-  if (!workflow || typeof workflow.callMacros !== "function") return false;
+  if (!workflow) return false;
+  installExternalItemMacroWorkflowStateGuards(workflow);
+  if (typeof workflow.callMacros !== "function") return false;
   const state = getExternalItemMacroDispatchState(workflow);
   if (state.originalCallMacros) return true;
   state.originalCallMacros = workflow.callMacros;
@@ -2465,6 +2489,7 @@ function installExternalItemMacroPassDispatcher(workflow) {
           return [...(Array.isArray(results) ? results : []), { haltEffectsApplication: true }];
         }
         this.aborted = true;
+        if (canonicalPass === "postSave") this.__externalReactionCancelPass = "postSave";
       }
     }
     return results;
@@ -2477,7 +2502,6 @@ async function dispatchExternalItemMacroStage(workflow, macroPass) {
   const state = getExternalItemMacroDispatchState(workflow);
   const passKey = String(macroPass ?? "").toLowerCase();
   if (state.seenPasses.has(passKey) || state.dispatching || workflow.aborted) return { cancel: false };
-  state.seenPasses.add(passKey);
   state.dispatching = true;
   try {
       if (!workflow) return { cancel: false };
@@ -2489,14 +2513,16 @@ async function dispatchExternalItemMacroStage(workflow, macroPass) {
       const eventFlags = getExternalWorkflowEventFlags(workflow, { actionType, activity, item: workflow.item, itemUse: true });
       const actionActorToken = getWorkflowToken(workflow);
       const actionActor = workflow.actor ?? actionActorToken?.actor;
-      // Cross-actor spatial reactions require a real scene token for the triggering actor.
-      // Do not let a missing token turn CanSee or actor.range into a self-token false positive.
+      // A hook may fire with an incomplete/legacy usage payload. Do not mark the pass
+      // as seen until it has a live workflow plus the initiating scene token; a later
+      // V2 hook for the same use must still be allowed to dispatch.
       if (!actionActorToken?.actor || actionActorToken.actor.uuid !== actionActor?.uuid) {
-        debug("Skipping itemMacro interception because the initiating actor has no matching scene token.", {
-          actor: actionActor?.name, item: workflow.item?.name
+        debug("Skipping itemMacro interception because the initiating actor has no matching scene token/workflow context.", {
+          actor: actionActor?.name, item: workflow.item?.name, macroPass
         });
         return { cancel: false };
       }
+      state.seenPasses.add(passKey);
       const targets = [...(workflow.targets ?? [])];
       const actorMap = collectSceneActors([actionActorToken, ...targets].filter(Boolean));
       const gm = game.users.find(user => user.active && user.isGM);
@@ -2586,12 +2612,25 @@ Hooks.on("midi-qol.preTargetingV2", workflow => {
   installExternalItemMacroPassDispatcher(workflow);
 });
 
-Hooks.on("midi-qol.preItemRoll", async workflow => {
-  if (!workflow) return;
+function getExternalItemMacroWorkflowFromHookPayload(payload) {
+  // V14 legacy hooks receive { activity, token, config: usage, dialog, message };
+  // the corresponding V2 hook receives { workflow, usage, dialog, message }.
+  return payload?.workflow ?? payload?.usage?.workflow ?? payload?.config?.workflow ?? payload;
+}
+
+async function dispatchExternalPreItemRollHook(payload) {
+  const workflow = getExternalItemMacroWorkflowFromHookPayload(payload);
+  if (!workflow || typeof workflow.callMacros !== "function" || !workflow.item || !workflow.actor) return;
   installExternalItemMacroPassDispatcher(workflow);
   const outcome = await dispatchExternalItemMacroStage(workflow, "preItemRoll");
-  if (outcome.cancel) { workflow.aborted = true; return false; }
-});
+  if (outcome.cancel) {
+    workflow.aborted = true;
+    return false;
+  }
+}
+
+Hooks.on("midi-qol.preItemRoll", payload => dispatchExternalPreItemRollHook(payload));
+Hooks.on("midi-qol.preItemRollV2", payload => dispatchExternalPreItemRollHook(payload));
 
 // Midi-QoL 14's AttackActivity.configureAttackRoll returns false when this hook
 // returns false, but rollAttack then falls back to the base D&D5e roll path. That
