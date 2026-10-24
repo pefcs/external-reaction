@@ -2190,13 +2190,27 @@ Hooks.once("ready", () => {
 });
 
 function getExternalItemMacroData(item) {
-  // DAE's Item Macro Editor (DIME) stores the script at flags.dae.macro.
-  // Prefer it when present, then fall back to the legacy Item Macro module flag.
-  return item?.flags?.dae?.macro
-    ?? item?.getFlag?.("dae", "macro")
-    ?? item?.flags?.itemacro?.macro
-    ?? item?.getFlag?.("itemacro", "macro")
-    ?? null;
+  // Read the serialized document flags first. Legacy flag scopes may not be
+  // registered/active in Foundry V14, and Document#getFlag can throw for them.
+  const daeMacro = item?.flags?.dae?.macro ?? item?._source?.flags?.dae?.macro;
+  if (daeMacro != null) return daeMacro;
+
+  // Preserve compatibility with documents that expose the flag via getFlag,
+  // but never allow an unavailable optional scope to break workflow dispatch.
+  try {
+    const macro = item?.getFlag?.("dae", "macro");
+    if (macro != null) return macro;
+  } catch (_) { /* DAE's flag scope may be unavailable on this document. */ }
+
+  const legacyMacro = item?.flags?.itemacro?.macro ?? item?._source?.flags?.itemacro?.macro;
+  if (legacyMacro != null) return legacyMacro;
+
+  try {
+    return item?.getFlag?.("itemacro", "macro") ?? null;
+  } catch (_) {
+    // The legacy Item Macro module's flag scope may not be registered or active.
+    return null;
+  }
 }
 
 function externalEffectHasOptionalFlag(effect, flagKey) {
