@@ -6,13 +6,14 @@ This is a regression-focused patch release on top of the v0.9.0 Activity-trigger
 
 > Test in a copy of your world. Static code/manifest/ZIP checks have been run; the regression cases below still require verification inside Foundry. v0.9.2 fixes triggered Activity target application for Foundry V14; v0.9.3 queues/deduplicates Activity triggers until all optional reaction prompts in the batch are resolved; v0.9.4 adds `spellslot X` count/countAlt support with an ordinary/Pact Magic slot selector and cancel-safe payment; v0.9.5 aligns console logging with Midi-QoL Debug and makes spell-slot dialog cancellation a silent opt-out.
 
-## New development tests — v0.10.0 configurable Item Macro stages
+## New development tests — v0.10.1 configurable Item Macro stages
 
 Test in a disposable world. Static source checks have passed, but these cases still require in-Foundry verification against Foundry 14.369, D&D 5e 6.0.6, Midi-QoL 14.6.4, and socketlib.
 
+- [ ] With no External Reaction `itemMacro` optional configured anywhere, ordinary Activities still enter their normal workflow; `midi-qol.preTargeting` must never be aborted by the dispatcher-installation hook.
 - [ ] A normal optional with an Activity UUID in `activity.trigger` still queues and uses that Activity as before.
-- [ ] `activity.trigger = itemMacro` with no pass prompts at `preItemRoll` before the initiating item's roll begins.
-- [ ] `activity.trigger = "ItemMacro, postAttackRoll"` and separate `activity.macroPass = postAttackRoll` both prompt only after attack and hit/miss evaluation.
+- [ ] `activity.trigger = itemMacro` with no pass dispatches at `postActiveEffects`, matching Midi-QoL's default OnUse macro pass. No prompt should be shown before then.
+- [ ] `activity.trigger = "ItemMacro, postAttackRoll"` and separate `activity.macroPass = postAttackRoll` both override the default and prompt only after attack and hit/miss evaluation.
 - [ ] At `postAttackRoll`, the macro sees the completed attack roll and known hit/miss result; returning `"cancel"` leaves the attack result visible but prevents the normal damage roll and later processing.
 - [ ] `preCheckHits` triggers after the attack roll but before hit adjudication; cancellation prevents the hit-check stage and later damage processing.
 - [ ] `preDamageRoll` triggers at Midi-QoL's awaited pre-damage hook; cancellation prevents the damage roll. `postDamageRoll` runs after the damage roll and cancels later processing.
