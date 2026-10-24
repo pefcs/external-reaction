@@ -2,6 +2,13 @@
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
 
+## 0.10.3 — development workflow cancellation and Activity recursion fix
+
+- Fix `preAttackRoll` cancellation so it marks the live Midi-QoL workflow aborted without returning `false` from the hook; on Midi-QoL V14 the false return makes `rollAttack` fall through to the base D&D5e roll implementation and open the default configurator.
+- Suppress the item's native ItemMacro when an Item Macro returns an Activity on that same Item, preventing the nested Activity from calling the reaction test macro a second time.
+- Restore the user's prior target selection after the triggered Activity finishes.
+- Add diagnostics for the one-shot nested-Activity suppression context.
+
 ## 0.10.2 — development Item Macro source fix
 
 - Resolve the source Item by searching the reactor Actor's embedded Items for the Item that contains the matching External Reaction Active Effect when the transferred effect origin cannot be resolved.
