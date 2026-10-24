@@ -402,3 +402,14 @@ Create a reactor with at least one ordinary spell slot and, if possible, a Pact 
 - [ ] A single reactor + optional flag key + Activity reference accepted against multiple targets produces one Activity start per workflow batch.
 - [ ] Target selector / template placement does not appear while other optional reactions in that batch remain unresolved.
 - [ ] Triggered Activity can still start a nested workflow after the original reaction count locks have been released.
+
+
+## v0.10.3 workflow interception regression cases
+
+- [ ] Configure `ItemMacro, preAttackRoll`, choose Cancel, and verify no Foundry/D&D 5e attack configurator opens and no attack roll/chat roll is produced.
+- [ ] Configure `ItemMacro, preAttackRoll`, choose Continue, and verify the original attack proceeds against its original target.
+- [ ] Choose Activity where the Activity belongs to the same Item that stores the Item Macro. Verify its native `postActiveEffects` ItemMacro does not re-open the reaction test dialog.
+- [ ] After the triggered Activity finishes, verify the original user's targets are restored and the original attack still targets its original target.
+- [ ] Repeat the Activity case with an Activity on a different Item; verify its own ItemMacro is not suppressed accidentally.
+
+> Static checks do not replace the Foundry runtime tests above. In particular, cancellation and the same-Item Activity path require an in-world check on the target Midi-QoL version.
