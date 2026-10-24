@@ -292,3 +292,10 @@ External Reaction follows the world setting **Midi-QoL → Debug** for browser-c
 | `Warnings` | Warnings (`console.warn`, yellow) and errors. |
 | `Debug` | Warnings, informational messages, debug messages, and errors. |
 | `All` | All of the above, plus verbose trace messages. |
+
+
+## Nested Activity use and workflow cancellation
+
+When an Item Macro returns an Activity from the same embedded Item that stores its macro command, External Reaction uses a one-shot context to suppress that Item's ordinary native on-use ItemMacro for the nested Activity; this avoids recursively prompting the same reaction. Other macro calls and Activities from other Items are not intentionally suppressed. The user's existing target selection is restored after the triggered Activity use completes.
+
+At `preAttackRoll`, External Reaction marks the live workflow as aborted and does not return `false` from the hook. In Midi-QoL V14's `AttackActivity.rollAttack`, a `false` result from `configureAttackRoll` falls through to the core D&D 5e `rollAttack` implementation, so returning `false` would unexpectedly open the normal roll configurator. Cancellation at this stage prevents the remaining Midi-QoL roll path; later stages cannot roll back earlier work.
