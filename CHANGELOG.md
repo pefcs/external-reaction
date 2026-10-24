@@ -8,6 +8,7 @@ Notable changes for each release are recorded here. GitHub also generates releas
 - Suppress the item's native ItemMacro when an Item Macro returns an Activity on that same Item, preventing the nested Activity from calling the reaction test macro a second time.
 - Restore the user's prior target selection after the triggered Activity finishes.
 - Add diagnostics for the one-shot nested-Activity suppression context.
+- Document the setup rule: store the Item Macro on the Item, but do not also register it on any Midi-QoL On Use Macro stage when External Reaction is its caller.
 
 ## 0.10.2 — development Item Macro source fix
 
