@@ -2115,24 +2115,109 @@ Hooks.once("ready", () => {
   log("Ready; waiting for Midi-QoL attack, saving throw, ability-check, skill, damage, and AC bonus workflows with Midi-QoL activation conditions");
 });
 
+function getExternalItemMacroData(item) {
+  // DAE's Item Macro Editor (DIME) stores the script at flags.dae.macro.
+  // Prefer it when present, then fall back to the legacy Item Macro module flag.
+  return item?.flags?.dae?.macro
+    ?? item?.getFlag?.("dae", "macro")
+    ?? item?.flags?.itemacro?.macro
+    ?? item?.getFlag?.("itemacro", "macro")
+    ?? null;
+}
+
+function externalEffectHasOptionalFlag(effect, flagKey) {
+  const prefix = `${FLAG_ROOT}.${flagKey}.`;
+  const changes = effect?.system?.changes ?? effect?.changes ?? effect?._source?.system?.changes ?? [];
+  return changes.some(change => String(change?.key ?? "").startsWith(prefix));
+}
+
+function externalItemEffects(item) {
+  const effects = item?.effects ?? item?.system?.effects;
+  if (effects?.contents) return effects.contents;
+  try { return Array.from(effects ?? []); } catch (_) { return []; }
+}
+
 async function resolveExternalReactionMacroItem(actor, flagKey) {
   const sourceEffect = findGrantingEffect(actor, flagKey);
-  if (sourceEffect?.origin) {
+  const ownedItems = Array.from(actor?.items ?? []);
+  const actorOwnsItem = item => !!item && (
+    item.parent?.uuid === actor?.uuid
+    || item.actor?.uuid === actor?.uuid
+    || ownedItems.some(owned => owned?.uuid && owned.uuid === item.uuid)
+  );
+  const itemFromDocument = document => {
+    if (!document) return null;
+    if (document.documentName === "Item" || document instanceof Item) return document;
+    if (document.documentName === "ActiveEffect" || document instanceof ActiveEffect) {
+      const parent = document.parent;
+      if (parent?.documentName === "Item" || parent instanceof Item) return parent;
+    }
+    const item = document.item;
+    if (item?.documentName === "Item" || item instanceof Item) return item;
+    return null;
+  };
+  let originItemCandidate = null;
+  const originReferences = [
+    sourceEffect?.origin,
+    sourceEffect?.system?.origin?.item,
+    sourceEffect?.flags?.dae?.itemData?.uuid
+  ].filter(value => typeof value === "string" && value.trim());
+
+  for (const originReference of originReferences) {
+    const reference = originReference.trim();
+    const direct = ownedItems.find(item => item?.uuid === reference);
+    if (direct) {
+      const directMacro = getExternalItemMacroData(direct);
+      if (typeof directMacro?.command === "string" && directMacro.command.trim()) return direct;
+      originItemCandidate ??= direct;
+    }
+
+    // Resolve same-Actor Item UUIDs directly before calling fromUuid. This also
+    // tolerates document subclass/instanceof differences in Foundry V14.
+    const localPrefix = `${actor?.uuid}.Item.`;
+    if (actor?.uuid && reference.startsWith(localPrefix)) {
+      const itemId = reference.slice(localPrefix.length).split(".")[0];
+      const localItem = actor.items?.get?.(itemId) ?? ownedItems.find(item => item?.id === itemId);
+      if (localItem) {
+        const localMacro = getExternalItemMacroData(localItem);
+        if (typeof localMacro?.command === "string" && localMacro.command.trim()) return localItem;
+        originItemCandidate ??= localItem;
+      }
+    }
+
     try {
-      const origin = await fromUuid(sourceEffect.origin);
-      let item = null;
-      if (origin instanceof Item) item = origin;
-      else if (origin instanceof ActiveEffect && origin.parent instanceof Item) item = origin.parent;
-      else if (origin?.item instanceof Item) item = origin.item;
-      if (item && (item.parent?.uuid === actor.uuid || item.actor?.uuid === actor.uuid)) return item;
-    } catch (_) { /* Fall back to an Actor-owned Item matching the optional key. */ }
+      const originDocument = await fromUuid(reference);
+      const item = itemFromDocument(originDocument);
+      if (actorOwnsItem(item)) {
+        const macro = getExternalItemMacroData(item);
+        if (typeof macro?.command === "string" && macro.command.trim()) return item;
+        originItemCandidate ??= item;
+      }
+    } catch (_) { /* Try embedded-effect lookup below. */ }
   }
+
+  // A transferred Active Effect may not resolve cleanly back to its source Item.
+  // The source Item still contains the effect change and its embedded macro.
+  const effectItems = ownedItems.filter(item =>
+    externalItemEffects(item).some(effect => externalEffectHasOptionalFlag(effect, flagKey))
+  );
+  const effectItemWithMacro = effectItems.find(item => {
+    const macro = getExternalItemMacroData(item);
+    return typeof macro?.command === "string" && !!macro.command.trim();
+  });
+  if (effectItemWithMacro) return effectItemWithMacro;
+  if (originItemCandidate) return originItemCandidate;
+  if (effectItems.length) return effectItems[0];
+
   const key = String(flagKey ?? "").trim().toLowerCase();
-  return Array.from(actor?.items ?? []).find(item =>
-    String(item.name ?? "").trim().toLowerCase() === key
-    || String(item.identifier ?? "").trim().toLowerCase() === key
-    || String(item.id ?? "").trim().toLowerCase() === key
-  ) ?? null;
+  const nameMatch = item => String(item?.name ?? "").trim().toLowerCase() === key
+    || String(item?.identifier ?? "").trim().toLowerCase() === key
+    || String(item?.id ?? "").trim().toLowerCase() === key;
+  return ownedItems.find(item => {
+    if (!nameMatch(item)) return false;
+    const macro = getExternalItemMacroData(item);
+    return typeof macro?.command === "string" && !!macro.command.trim();
+  }) ?? ownedItems.find(nameMatch) ?? null;
 }
 
 function getExternalSpellLevel(workflow) {
@@ -2151,7 +2236,7 @@ function getExternalSpellLevel(workflow) {
 
 async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, flagData, recipient, socket, triggerToken, eventFlags, accepted, macroPass = "preItemRoll" }) {
   const macroItem = await resolveExternalReactionMacroItem(reactor.actor, flagKey);
-  const macroDataFlag = macroItem?.flags?.itemacro?.macro ?? macroItem?.getFlag?.("itemacro", "macro");
+  const macroDataFlag = getExternalItemMacroData(macroItem);
   if (!macroItem || typeof macroDataFlag?.command !== "string" || !macroDataFlag.command.trim()) {
     warn("activity.trigger is itemMacro but no Item Macro command could be resolved for the reactor's source Item; leaving the original workflow unchanged.", {
       reactor: reactor.actor?.name, flagKey, item: macroItem?.name
@@ -2345,9 +2430,13 @@ async function dispatchExternalItemMacroStage(workflow, macroPass) {
           if (!countAvailable(actor, flagData, flagKey)) continue;
           if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
           const macroItem = await resolveExternalReactionMacroItem(actor, flagKey);
-          const itemMacro = macroItem?.flags?.itemacro?.macro ?? macroItem?.getFlag?.("itemacro", "macro");
-          if (!macroItem || typeof itemMacro?.command !== "string" || !itemMacro.command.trim()) {
-            debug("Skipping itemMacro optional because its source Item or Item Macro command could not be resolved.", { reactor: actor.name, flagKey, sourceItem: macroItem?.name });
+          const itemMacro = getExternalItemMacroData(macroItem);
+          if (!macroItem) {
+            debug("Skipping itemMacro optional because its source Item could not be resolved from the effect origin or the Actor's embedded Item effects.", { reactor: actor.name, flagKey, macroPass });
+            continue;
+          }
+          if (typeof itemMacro?.command !== "string" || !itemMacro.command.trim()) {
+            debug("Skipping itemMacro optional because no macro command was found on its source Item (checked DAE/DIME and Item Macro flags).", { reactor: actor.name, flagKey, sourceItem: macroItem.name, macroPass });
             continue;
           }
           const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken ?? token, {
