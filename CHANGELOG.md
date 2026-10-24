@@ -2,6 +2,12 @@
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
 
+## 0.10.4 — development preItemRoll and postSave cancellation fix
+
+- Resolve the Midi-QoL V14 legacy `preItemRoll` hook payload through `config.workflow` and register the `preItemRollV2` hook too; don't mark a pass as seen if the callback does not yet have a usable initiating scene-token context.
+- Add a workflow-state guard so cancelling the `postSave` Item Macro pass transitions directly to Abort before the next AllRollsComplete/damage-application state.
+- Keep `preDamageRoll` cancellation routed through Midi-QoL's cancellable `midi-qol.preDamageRoll` hook. The source contract returns before the core damage roll when the hook returns false; the reported remaining roll needs an in-world log to determine whether another path is producing it.
+
 ## 0.10.3 — development workflow cancellation and Activity recursion fix
 
 - Fix `preAttackRoll` cancellation so it marks the live Midi-QoL workflow aborted without returning `false` from the hook; on Midi-QoL V14 the false return makes `rollAttack` fall through to the base D&D5e roll implementation and open the default configurator.
