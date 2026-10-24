@@ -298,7 +298,7 @@ External Reaction follows the world setting **Midi-QoL → Debug** for browser-c
 
 ## preItemRoll and postSave cancellation notes
 
-Midi-QoL V14 calls its legacy `midi-qol.preItemRoll` hook with a payload object whose `config` field contains the usage config and live Workflow (`config.workflow`). Its V2 hook uses a payload with `workflow` directly. External Reaction resolves both forms and registers both hooks, relying on per-workflow pass deduplication to prevent two prompts. A callback with incomplete workflow/token context must not consume the pass as "seen"; later V2 dispatch may be the first callback with a usable context.
+Midi-QoL V14 calls its legacy `midi-qol.preItemRoll` hook with positional arguments `(activity, token, config, dialog, message)`; the live Workflow is exposed as `config.workflow`. Its V2 hook passes `(workflow, usage, dialog, message)`. External Reaction resolves both forms and registers both hooks, relying on per-workflow pass deduplication to prevent two prompts. A callback with incomplete workflow/token context must not consume the pass as "seen"; later V2 dispatch may be the first callback with a usable context.
 
 For `postSave`, the native Midi-QoL `WorkflowState_SavesComplete` invokes the postSave macro and then ordinarily transitions to `WorkflowState_AllRollsComplete`, where damage details are processed. Merely setting `workflow.aborted` in the postSave callback does not reliably stop that next state in this path. External Reaction wraps the instance's save-complete state and sends it to `WorkflowState_Abort` after the native save-complete code returns when its postSave pass was cancelled, preventing later damage processing.
 
