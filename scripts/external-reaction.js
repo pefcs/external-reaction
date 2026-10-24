@@ -775,7 +775,12 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
   // Normalize the user-friendly negated-comparison shorthand before calling Midi's
   // evaluator, while leaving the standard JavaScript expression grammar intact.
   const expression = typeof rawExpression === "string"
-    ? normalizeActorIdentityComparisons(normalizeNegatedDispositionComparisons(rawExpression))
+    ? normalizeActorIdentityComparisons(
+        normalizeNegatedDispositionComparisons(rawExpression)
+          // Allow bare `canSee` as a readable alias for the boolean visibility value.
+          // Preserve Midi-QoL's `canSee(token, target)` helper calls.
+          .replace(/\bcanSee\b(?!\s*\()/g, "CanSee")
+      )
     : rawExpression;
   if (!midi?.createConditionData || !midi?.evalCondition) {
     warn("Midi-QoL condition evaluation API unavailable; activation condition rejected.", { actor: reactor?.actor?.name });
@@ -995,10 +1000,9 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
 
   if (conditionData.actor && Number.isFinite(actorRange)) conditionData.actor.range = actorRange;
   if (Number.isFinite(targetRange)) conditionData.range = targetRange;
-  // Support both spellings in activation expressions. Existing examples use CanSee,
-  // while users may naturally write canSee; both must resolve to the same visibility result.
+  // The boolean visibility value is exposed as CanSee. Bare `canSee` is normalized
+  // to this alias above, preserving Midi-QoL's callable `canSee(token, target)` helper.
   conditionData.CanSee = canSeeTarget;
-  conditionData.canSee = canSeeTarget;
   // Friendly/enemy and range/CanSee now describe the reaction's actual target. Use
   // actor.disposition / target.disposition when the expression needs to inspect both sides.
   conditionData.friendly = dispositionMatches(reactor, targetToken, "friendly");
