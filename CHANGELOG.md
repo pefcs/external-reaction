@@ -4,6 +4,10 @@ Notable changes for each release are recorded here. GitHub also generates releas
 
 ## 0.10.0 — development build
 
+- Added configurable Midi-QoL Item Macro workflow passes, including `postAttackRoll`, with stage-aware cancellation; aborting does not roll back earlier work.
+- Routed `preCheckHits`, `preDamageRoll`, and `preSave` through awaited Midi-QoL hooks; `preActiveEffects` uses the dedicated `haltEffectsApplication` result.
+- Excluded passes that do not provide a reliable generic cancellation point: `preAttackRollConfig`, `preDamageRollConfig`, `preDamageApplication`, and `damageBonus`.
+
 - Added Boolean activation-condition event flags for casts, attack and attack types, saves, checks, skills, damage/healing, and related workflow categories.
 - Added `activity.trigger = itemMacro` preItemRoll interception. Item Macros can cancel/continue the initiating workflow or request an Activity.
 - Added structured spell-slot and ItemUses/ActivityUses resource receipts to Item Macro context.
@@ -34,9 +38,3 @@ This is the repository baseline imported from the tested v0.9.5 module package. 
 ## Future releases
 
 Add a dated section for each new version, newest first. Describe user-visible behavior changes and mention important compatibility changes or limitations.
-
-## Development update — configurable Item Macro stages
-
-- Added configurable Midi-QoL Item Macro workflow passes, including `postAttackRoll`, with stage-aware cancellation; aborting does not roll back earlier work.
-- Routed `preCheckHits`, `preDamageRoll`, and `preSave` through awaited Midi-QoL hooks; `preActiveEffects` uses the dedicated `haltEffectsApplication` result.
-- Excluded passes that do not provide a reliable generic cancellation point: `preAttackRollConfig`, `preDamageRollConfig`, `preDamageApplication`, and `damageBonus`.
