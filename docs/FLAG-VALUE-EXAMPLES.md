@@ -8,7 +8,7 @@ This document is a practical catalogue of Active Effect change examples for Exte
 - **Type** is the Active Effect change mode. Use **Override** for the flags below unless a future version of the reference explicitly says otherwise. These are module configuration flags, not ordinary actor statistics; do not change the mode to Add just because the value is numeric.
 - **Value** contains the literal value to enter and a short explanation of its effect.
 - Replace `NAME` with a unique group name, such as `Shield`, `InspiringLeader`, or `FireBrand`. The group name is an arbitrary key; avoid reusing it for unrelated options on the same Actor.
-- Add each row as its own Active Effect change. A group can contain a trigger flag plus settings such as `count`, `activation`, `rollMode`, and `displayBonusRolls`.
+- Add each row as its own Active Effect change. A group can contain multiple trigger flags plus one of each settings such as `count`, `activation`, `rollMode`, and `displayBonusRolls`.
 - Unless otherwise noted, formulas are examples and should be adjusted to suit the feature/item. Confirm the exact change key and value in a disposable world before using them in a live campaign.
 
 ## 1. Attack-roll bonuses
