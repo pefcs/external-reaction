@@ -34,3 +34,9 @@ This is the repository baseline imported from the tested v0.9.5 module package. 
 ## Future releases
 
 Add a dated section for each new version, newest first. Describe user-visible behavior changes and mention important compatibility changes or limitations.
+
+## Development update — configurable Item Macro stages
+
+- Added configurable Midi-QoL Item Macro workflow passes, including `postAttackRoll`, with stage-aware cancellation; aborting does not roll back earlier work.
+- Routed `preCheckHits`, `preDamageRoll`, and `preSave` through awaited Midi-QoL hooks; `preActiveEffects` uses the dedicated `haltEffectsApplication` result.
+- Excluded passes that do not provide a reliable generic cancellation point: `preAttackRollConfig`, `preDamageRollConfig`, `preDamageApplication`, and `damageBonus`.
