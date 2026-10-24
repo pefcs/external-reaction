@@ -2,7 +2,7 @@
 
 Notable changes for each release are recorded here. GitHub also generates release notes when a new version is published.
 
-## Unreleased
+## 0.9.7
 
 - Extended activation-condition range syntax: `range` continues to measure from the reactor to the action target; `actor.range` measures from the reactor to the initiating actor; `target.range` explicitly refers to the action target.
 - Added support for lowercase bare `canSee` as an alias for the visibility boolean `CanSee`, while preserving Midi-QoL's callable `canSee(token, target)` helper.
