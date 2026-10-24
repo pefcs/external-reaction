@@ -2648,14 +2648,14 @@ function describeExternalPreItemRollHookArg(value) {
 function findExternalPreItemRollWorkflow(hookArgs) {
   const queue = [...hookArgs];
   const visited = new Set();
-  const relatedKeys = ["workflow", "config", "usage", "context", "data"];
+  const relatedKeys = ["workflow", "config", "usage", "context", "data", "args", "payload"];
   while (queue.length) {
     const value = queue.shift();
     if (!value || typeof value !== "object" || visited.has(value)) continue;
     visited.add(value);
-    if (typeof value.callMacro === "function"
-        && (value.item || value.activity?.item || value.getMacroData)
-        && (value.actor || value.token?.actor || value.item?.actor || value.activity?.item?.actor)) return value;
+    // callMacro is the decisive signature for Midi's live Workflow helper. Actor,
+    // Item and Activity may still be reachable only through the other hook arguments.
+    if (typeof value.callMacro === "function") return value;
     if (Array.isArray(value)) {
       queue.unshift(...value.slice(0, 12));
       continue;
