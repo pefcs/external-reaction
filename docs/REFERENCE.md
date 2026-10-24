@@ -176,15 +176,26 @@ The normal Activity trigger runs **after the reactor accepts** the optional-reac
 
 #### Item Macro workflow interception
 
-Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro as a decision point during the triggering item's `midi-qol.preItemRoll` hook. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect; if that cannot be found, External Reaction falls back to an Actor-owned Item whose name, identifier, or ID matches `NAME`. Put the macro on that Item.
+Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro at the `preItemRoll` stage by default. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect; if that cannot be found, External Reaction falls back to an Actor-owned Item whose name, identifier, or ID matches `NAME`. Put the macro on that Item.
+
+Choose a different workflow stage in either of these equivalent ways:
+
+| Configuration | Example |
+|---|---|
+| Midi-style trigger value | `flags.external-reaction.optional.NAME.activity.trigger = "ItemMacro, postAttackRoll"` |
+| Separate field | `activity.trigger = itemMacro` and `activity.macroPass = postAttackRoll` |
+
+The trigger name is case-insensitive. The pass name is matched case-insensitively and normalized to Midi-QoL's canonical pass name. Supported passes include `preItemRoll`, `preAttackRoll`, `preCheckHits`, `postAttackRoll`, `preDamageRoll`, `postDamageRoll`, `preSave`, `postSave`, `preActiveEffects`, `postActiveEffects`, plus later workflow-state passes such as `preWaitForAttackRoll`, `postAttackRollComplete`, and `preCleanup`. The dispatcher is installed at `preItemRoll`, so earlier passes cannot be guaranteed. `preCheckHits`, `preDamageRoll`, and `preSave` are dispatched through Midi-QoL's awaited hooks so abort is handled before the next operation; `preSave` relies on Midi-QoL reaching `midi-qol.preCheckSaves` (normally when automatic save checking is enabled). The special `all` pass is intentionally not accepted because it would make a reaction eligible at many unrelated points in the same workflow.
+
+External Reaction awaits the configured Item Macro result at the selected pass. For standard workflow-state passes, it wraps Midi-QoL's awaited `callMacros` dispatch. Some passes are routed through direct Midi-QoL hooks where the native macro pass would otherwise let the state method continue processing. At `preActiveEffects`, External Reaction uses Midi-QoL's dedicated `{ haltEffectsApplication: true }` result contract; damage and earlier processing may already have happened. Not every documented Midi macro pass is enabled: `preAttackRollConfig`, `preDamageRollConfig`, `preDamageApplication`, and `damageBonus` are excluded because they are not reliable general workflow-cancellation points in the targeted Midi-QoL source.
 
 For a reaction that must expend both the character's Reaction and a minimum spell slot, configure `count = reaction` and `countAlt = spellslot 3` (or reverse the two). Using only `count = spellslot 3` spends the slot but does not itself mark the character's Reaction as used.
 
-Activation conditions are checked before the prompt. At this interception point, `actor` is the initiating actor (for Counterspell, the caster), `actor.range` is the reactor-to-initiator distance, `CanSee`/bare `canSee` describes the reactor seeing the initiating token, and flags such as `cast`/`attack` describe the initiating item workflow.
+Activation conditions are checked immediately before the prompt at the configured stage. In the context, `actor` is the initiating actor (for Counterspell, the caster), `actor.range` is the reactor-to-initiator distance, `CanSee`/bare `canSee` describes the reactor seeing the initiating token, and flags such as `cast`/`attack` describe the initiating workflow.
 
 The Item Macro receives the original live `workflow` and these additional values:
 
-- `externalReaction.trigger`: `type`, `eventFlags`, `phase`, `workflowId`, `actorUuid`, `itemUuid`, `activityUuid`, `spellLevel`, `reactorUuid`, and `flagKey`.
+- `externalReaction.trigger`: `type`, `eventFlags`, `phase` (the selected pass), `macroPass`, `workflowId`, `actorUuid`, `itemUuid`, `activityUuid`, `spellLevel`, `reactorUuid`, and `flagKey`.
 - `externalReaction.resource`: the first resource receipt, or `null`.
 - `externalReaction.resources`: an array of resource receipts.
 - Top-level aliases `resource`, `resources`, `reactor`, and `reactorToken` are also provided. The macro's `actor` is the reactor; `target` is the initiating token; `targetActor` is the initiating actor.
@@ -193,27 +204,17 @@ Supported Item Macro return values:
 
 | Return value | Meaning |
 |---|---|
-| `"cancel"` or `{ action: "cancel" }` | Abort the original Midi-QoL workflow by returning `false` from `preItemRoll`. |
+| `true`, `"cancel"`, or `{ action: "cancel" }` | Abort the remaining original Midi-QoL workflow. At `preItemRoll`, this prevents later roll processing; at later stages, earlier work remains. |
 | `0`, `false`, `null`, `undefined`, or `"continue"` | Continue the original workflow unchanged. |
 | An Activity UUID/reference string or Activity document | Use that Activity on the reactor's client, then continue the original workflow. |
-| `{ action: "activity", activityUuid: "...", cancelOriginal: true }` | Use the Activity, then cancel the original workflow. Omit `cancelOriginal` to continue it. |
+| `{ action: "activity", activityUuid: "...", cancelOriginal: true }` | Use the Activity, then abort the remaining original workflow. Omit `cancelOriginal` to continue it. |
 
-For example, a macro can read `externalReaction.trigger.spellLevel` and `externalReaction.resource.level`, make a check, then return `"cancel"` on success or `0` on failure. A spell-slot receipt has `type: "spellSlot"`, `pool` (`spell` or `pact`), `slotKey`, `level`, `amount`, `consumed`, `before`, `after`, and `resourcePath`. An ItemUses/ActivityUses receipt has `type: "itemUsage"`, `actorUuid`, `itemUuid`, optional `activityUuid`, `amount`, `consumed`, availability `before`/`after`, spent `beforeSpent`/`afterSpent`, and the resource path/count expression.
+For example, a macro configured with `ItemMacro, postAttackRoll` can inspect `workflow.attackRoll`, `workflow.hitTargets`, and `workflow.hitTargetsEC`, perform any custom check, and return `"cancel"` to stop later workflow processing while keeping the attack roll and hit result visible. In Midi-QoL's current workflow sequence, hit/miss evaluation is complete, but damage has not yet been rolled. `preCheckHits` is earlier: the attack roll exists, but hit adjudication has not completed. `postDamageRoll` runs after the damage roll exists; `preActiveEffects` can prevent later Active Effect application, and `postActiveEffects` runs after Active Effects have already been applied.
 
-**Timing limitation:** `preItemRoll` is before the original item's normal resource consumption. Returning `"cancel"` aborts at that point. This is useful for pre-use guards/interception, but a rules-accurate 2014 Counterspell setup must also handle consumption of the interrupted caster's slot; this build does not automatically spend that original slot. The reactor's selected `spellslot X` is separately paid by External Reaction. If the Item Macro also launches a normal spell Activity that consumes a spell slot, verify that the same cast is not charged twice. For Counterspell, choose one owner for slot payment: External Reaction's selector or the Counterspell Activity, not both.
+**Important: aborting is not rollback.** A later-stage cancellation never automatically erases earlier rolls or restores consumed resources/HP, and `postActiveEffects` cannot undo effects that have already been applied. Use the earliest pass that provides the information your macro needs. Exact stage behavior should be verified against the installed Midi-QoL version and each Activity type. `preItemRoll` runs before the initiating item's normal resource consumption; therefore, a rules-accurate 2014 Counterspell setup still needs a separately tested way to preserve the interrupted caster's spell-slot consumption. If the Item Macro launches a normal spell Activity that consumes a spell slot, verify that the same cast is not charged twice and choose one owner for that payment.
 
-Activity reference formats supported:
+A spell-slot receipt has `type: "spellSlot"`, `pool` (`spell` or `pact`), `slotKey`, `level`, `amount`, `consumed`, `before`, `after`, and `resourcePath`. An ItemUses/ActivityUses receipt has `type: "itemUsage"`, `actorUuid`, `itemUuid`, optional `activityUuid`, `amount`, `consumed`, availability `before`/`after`, spent `beforeSpent`/`afterSpent`, and the resource path/count expression.
 
-| Format | Meaning |
-|---|---|
-| `Actor.<actorId>.Item.<itemId>.Activity.<activityId>` | Full Activity UUID (recommended; copy the Activity UUID from Foundry) |
-| `Activity.<activity UUID>` | Optional `Activity.` prefix before a full Activity UUID |
-| `Item.<item name>.<activity name>` | Resolve an embedded Item and Activity by exact case-insensitive names (or by Item ID plus Activity ID/name) |
-| `<item name>::<activity name>` | Explicit item/activity pair; recommended if either name contains dots |
-| `<item UUID>::<activity name>` | Resolve the Item UUID and Activity name/ID |
-| `<unique activity name>` | Resolve a name/identifier/ID only when it uniquely matches an Activity on the reactor's Actor |
-
-The Activity must belong to an embedded Item on the reactor's Actor. Activities on compendiums or other Actors cannot be used as this reactor's action, and unresolved/ambiguous references are reported in the console and to the user.
 
 ### Target selection behavior
 
