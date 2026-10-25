@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.9
+
+- Add `skill.prof` and `skill.exp` activation shortcuts. The module identifies the skill being rolled and checks the original workflow target's D&D 5e skill proficiency; proficiency and expertise satisfy `skill.prof`, while only expertise satisfies `skill.exp`.
+- Fix damage-triggered ItemMacro reactions to use Midi-QoL's per-target `midi-qol.isDamaged` hook. Require positive HP or Temporary HP damage, and evaluate the condition with the damaged creature as `target` and the attacker as `actor`.
+- Support Activity return references by UUID, explicit Item/Activity paths, compact Item/Activity paths, and unique partial names. Append `actor`, `target`, or `self` to direct the returned Activity; without a suffix, keep the normal target selector.
+- Prevent reactions for missed attacks and preserve non-attack damage reaction behavior.
+- Verified in Foundry by the maintainer/tester: damage-triggered reactions, `skill.prof` / `skill.exp` activation conditions, and Activity targeting both with the `actor` suffix and with normal target selection.
+
 Notable changes for each release are recorded here. GitHub Actions validates and packages releases when the manifest version changes on `main`.
 
 ## 0.10.8

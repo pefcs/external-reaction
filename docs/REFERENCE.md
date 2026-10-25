@@ -39,6 +39,8 @@ The supported D&D 5e skill IDs are `acr`, `ani`, `arc`, `ath`, `dec`, `his`, `in
 
 For normal Midi-QoL-style action-specific damage modifiers use `flags.external-reaction.optional.NAME.damage.{attackType}` or `...damage.all`. Attack-type IDs are `mwak`, `rwak`, `msak`, `rsak`, `heal`, `other`, `save`, and `util`. The action-specific path wins when present; otherwise `damage.all` is used.
 
+External Reaction does not offer a third-party `damage.*` bonus for an attack workflow with an empty hit-target set (a missed attack). This guard applies only to attack workflows; saving-throw-based and other non-attack damage workflows remain eligible.
+
 External Reaction supports damage-type paths in the form `flags.external-reaction.optional.NAME.damage.{damageType}.all` and `...damage.{damageType}.{attackType}`. The value is rolled as a separate `DamageRoll` with the selected damage type rather than being added as untyped damage. For example, `damage.fire.all = 1d6` adds Fire damage for any supported damage action, while `damage.fire.mwak = 1d6` adds Fire damage only for a melee weapon attack. Supported nested action-type suffixes are `mwak`, `rwak`, `msak`, `rsak`, `other`, `save`, and `util`; `heal` is intentionally not supported as a suffix under a damage type. Common damage IDs are Acid (`acid`), Bludgeoning (`bludgeoning`), Cold (`cold`), Fire (`fire`), Force (`force`), Lightning (`lightning`), Necrotic (`necrotic`), Piercing (`piercing`), Poison (`poison`), Psychic (`psychic`), Radiant (`radiant`), Slashing (`slashing`), and Thunder (`thunder`). The module also recognizes configured non-standard types such as Vitality and Maximum Hit Points (`maximum`, with `mhp` accepted as an alias) where supported by D&D 5e or another module. Use `damage.none.all` or `damage.none.{attackType}` for untyped damage (No type). “No damage” (`midi-none`) is excluded because it does not represent a damage roll.
 
 Damage-type IDs are resolved from the installed system's `CONFIG.DND5E.damageTypes` and `healingTypes`, with common fallbacks.
@@ -64,6 +66,10 @@ Add an Active Effect change with the Override mode:
 `flags.external-reaction.optional.NAME.activation`
 
 The value is a Midi-QoL activation-condition expression. Empty or missing activation conditions allow the option, preserving previous behavior. Conditions are evaluated separately for the current reaction context before the prompt is displayed.
+**Skill proficiency shortcuts:** the exact values `skill.prof` and `skill.exp` are External Reaction shorthand conditions, not ordinary Midi-QoL expressions. They apply only to skill-check workflows. The module resolves the skill from the live workflow (or from a Check Activity with exactly one associated skill) and checks the original workflow target's `system.skills[skillId].value`: `skill.prof` passes at `1` or `2`, while `skill.exp` passes only at `2`. Half proficiency (`0.5`), an ambiguous/unavailable skill, a missing original target, and non-skill workflows fail closed. These shortcuts do not need the skill name in the condition because the active workflow supplies it. They can be used wherever External Reaction evaluates an optional flag’s activation condition.
+
+
+**Special ItemMacro trigger:** when an option uses `activity.trigger = ItemMacro...` and its activation value is exactly `damage` (case-insensitive), External Reaction treats it as a damage-event selector rather than a general expression. It dispatches from Midi-QoL's per-target `midi-qol.isDamaged` hook after target-specific damage calculation and before application and offers the reaction only to the actor whose damage application reports positive HP or temporary HP damage. This overrides that option's configured ItemMacro pass. Missed attacks, unused damage formulas, and targets for which both HP damage and Temporary HP damage are zero must not trigger it. For damage-bonus options that do not use ItemMacro, `damage` remains the workflow event boolean in an activation expression.
 
 Supported operators and syntax follow Midi-QoL's evaluator: `!`, `&&`, `||`, `===`, `==`, comparisons (`<`, `<=`, `>`, `>=`), parentheses, optional chaining, array/object operations, and JavaScript expression methods that work inside Midi's sandbox. `@` formula references are also handled by Midi's evaluator.
 
@@ -92,6 +98,8 @@ Examples (set as the value of `flags.external-reaction.optional.NAME.activation`
 |---|---|
 | `true` | Always allow this optional flag |
 | `false` | Never offer this optional flag |
+| `skill.prof` | Allow only when the original workflow target is proficient or has expertise in the skill being rolled |
+| `skill.exp` | Allow only when the original workflow target has expertise in the skill being rolled |
 | `friendly` | Reactor and action `target` have a friendly disposition relationship |
 | `enemy` | Reactor and action `target` are enemies |
 | `friendly && CanSee` | Target is friendly and reactor can see the target |
@@ -216,6 +224,9 @@ Supported Item Macro return values:
 | `true`, `"cancel"`, or `{ action: "cancel" }` | Abort the remaining original Midi-QoL workflow. At `preItemRoll`, this prevents the original item use from proceeding; at later stages, earlier work remains. |
 | `0`, `false`, `null`, `undefined`, or `"continue"` | Continue the original workflow unchanged. |
 | An Activity UUID/reference string or Activity document | Use that Activity on the reactor's client, then continue the original workflow. |
+| `"Item.Test Item.Activity.Test Activity"` | Resolve the named embedded Item / Activity pair. |
+| `"Item.Test Item.Activity.Test Activity actor"` | Skip the custom target picker and target the original initiating actor. Suffixes `target` and `self` target the original workflow target and reactor. |
+| `{ action: "activity", activity: "...", target: "actor" }` | Structured alternative; `target` or `targetMode` accepts `actor`, `target`, or `self`. |
 | `{ action: "activity", activityUuid: "...", cancelOriginal: true }` | Use the Activity, then abort the remaining original workflow. Omit `cancelOriginal` to continue it. |
 
 For example, a macro configured with `ItemMacro, postAttackRoll` can inspect `workflow.attackRoll`, `workflow.hitTargets`, and `workflow.hitTargetsEC`, perform any custom check, and return `"cancel"` to stop later workflow processing while keeping the attack roll and hit result visible. In Midi-QoL's current workflow sequence, the attack roll has been processed and hit/miss evaluation has been performed, but damage has not yet been rolled. `preCheckHits` is earlier: the attack roll exists, but hit adjudication has not completed. `postDamageRoll` runs after the damage roll exists; `preActiveEffects` can prevent later Active Effect application, and `postActiveEffects` is after Active Effects have already been applied.
@@ -230,10 +241,13 @@ Activity reference formats supported:
 |---|---|
 | `Actor.<actorId>.Item.<itemId>.Activity.<activityId>` | Full Activity UUID (recommended; copy the Activity UUID from Foundry) |
 | `Activity.<activity UUID>` | Optional `Activity.` prefix before a full Activity UUID |
-| `Item.<item name>.<activity name>` | Resolve an embedded Item and Activity by exact case-insensitive names (or by Item ID plus Activity ID/name) |
+| `Item.<item name>.Activity.<activity name>` | Human-readable Item / Activity pair; supports spaces and dots in names |
+| `Item.<item name>.<activity name>` | Compact Item / Activity path; the module checks possible splits so names with dots can resolve |
 | `<item name>::<activity name>` | Explicit item/activity pair; recommended if either name contains dots |
 | `<item UUID>::<activity name>` | Resolve the Item UUID and Activity name/ID |
 | `<unique activity name>` | Resolve a name/identifier/ID only when it uniquely matches an Activity on the reactor's Actor |
+
+Name and identifier matching is case-insensitive. A unique partial match is supported within a resolved Item or across the reactor Actor for a bare Activity name; ambiguous matches are rejected.
 
 The Activity must belong to an embedded Item on the reactor's Actor. Activities on compendiums or other Actors cannot be used as this reactor's action, and unresolved/ambiguous references are reported in the console and to the user.
 

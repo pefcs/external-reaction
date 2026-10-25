@@ -1,3 +1,22 @@
+## v0.10.9 — release verification
+
+Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
+
+Verified in-world:
+- [x] Use `activation = damage` on an ItemMacro-backed option and confirm the reaction triggers when the target takes damage.
+- [x] Use `skill.prof` and `skill.exp` to filter reactions according to the original workflow target's proficiency and expertise in the skill actually being rolled.
+- [x] Return an Activity with the `actor` suffix and confirm it targets the original initiator without opening the module target picker.
+- [x] Return an Activity without a suffix, select a target, and confirm the Activity uses the selected target rather than the reactor.
+
+Additional regression checks:
+- [ ] Verify a missed attack does not trigger a damage reaction or consume a count/reaction.
+- [ ] Verify hits that result in zero HP and Temporary HP damage do not trigger a damage reaction.
+- [ ] Verify AOE damage checks each target independently and skips targets that take no damage.
+- [ ] Verify a non-skill check cannot pass `skill.prof` or `skill.exp`.
+- [ ] Verify Check Activities with several associated skills use the workflow's selected skill, and fail closed if the skill cannot be identified.
+- [ ] Verify a missing original target fails closed for `skill.prof` and `skill.exp`.
+- [ ] Retest resource consumption, spell-slot spending, and the original damage workflow after a returned Activity is used.
+
 # External Reaction v0.10.8 — Release verification
 
 **Target environment:** Foundry VTT 14.369 · D&D 5e 6.0.6 · Midi-QoL 14.6.4 · socketlib.
