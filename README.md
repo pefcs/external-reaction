@@ -2,10 +2,10 @@
 
 External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. It also supports triggered D&D 5e Activities and External Reaction Item Macros.
 
-**Current version: 0.10.8**  
+**Test build: 0.10.9-beta.1**  
 **Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
 
-## Highlights in 0.10.0–0.10.8
+## Highlights in 0.10.0–0.10.9-beta.1
 
 - Trigger reactions from workflow-event activation conditions such as `cast`, `attack`, save/check/skill events, and related activity flags.
 - Invoke an Item Macro at a selected Midi-QoL workflow pass, with structured spell-slot and ItemUses/ActivityUses resource receipts.
@@ -43,3 +43,9 @@ The repository's GitHub Actions workflow validates the manifest and JavaScript, 
 ## Compatibility and testing
 
 The manifest declares Foundry V14 and D&D 5e 6.0.6 as minimum versions. External Reaction integrates with Midi-QoL workflow methods that may change between versions. Test upgrades and new Item Macro passes in a copy of your world before using them in a live campaign. The 0.10.8 reactor-client Counterspell flow has been tested in-world for player-owned and GM-owned reactors, automatic countering when the Counterspell slot level is high enough, and success/failure handling for the ability check when the spell is higher-level.
+
+## v0.10.9-beta.1 test changes
+
+- Item Macro Activity returns can use full UUIDs, Item.<item>.Activity.<activity>, Item.<item>.<activity>, or unique partial names. Ambiguous name matches fail closed.
+- Append actor, target, or self to the returned reference to skip External Reaction's custom target picker and target the original initiating actor, original target, or reactor. Example: return "Item.Test Item.Activity.Test Activity actor".
+- Third-party damage.* reactions are skipped when an attack workflow reaches damage preparation with no hit targets. Non-attack damage workflows remain eligible.

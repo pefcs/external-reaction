@@ -1273,13 +1273,20 @@ function activityCollection(item) {
 function findActivityOnItem(item, reference) {
   const text = String(reference ?? "").trim();
   if (!item || !text) return null;
+  const normalized = text.toLocaleLowerCase();
   const activities = activityCollection(item);
   const idMatch = activities.find(activity => String(activity.id ?? activity._id ?? "") === text);
   if (idMatch) return idMatch;
-  const identifierMatches = activities.filter(activity => String(activity.identifier ?? "").toLowerCase() === text.toLowerCase());
+  const identifierMatches = activities.filter(activity => String(activity.identifier ?? "").toLocaleLowerCase() === normalized);
   if (identifierMatches.length === 1) return identifierMatches[0];
-  const nameMatches = activities.filter(activity => String(activity.name ?? "").toLowerCase() === text.toLowerCase());
-  return nameMatches.length === 1 ? nameMatches[0] : null;
+  const nameMatches = activities.filter(activity => String(activity.name ?? "").toLocaleLowerCase() === normalized);
+  if (nameMatches.length === 1) return nameMatches[0];
+  const partialMatches = activities.filter(activity => {
+    const identifier = String(activity.identifier ?? "").toLocaleLowerCase();
+    const name = String(activity.name ?? "").toLocaleLowerCase();
+    return (identifier && identifier.includes(normalized)) || (name && name.includes(normalized));
+  });
+  return partialMatches.length === 1 ? partialMatches[0] : null;
 }
 
 async function findActorItemReference(actor, reference) {
@@ -1287,10 +1294,18 @@ async function findActorItemReference(actor, reference) {
   if (!actor || !text) return null;
   const byId = actor.items?.get?.(text);
   if (byId) return byId;
-  const byIdentifier = actor.items?.filter?.(item => String(item.identifier ?? "").toLowerCase() === text.toLowerCase()) ?? [];
+  const items = Array.from(actor.items ?? []);
+  const normalized = text.toLocaleLowerCase();
+  const byIdentifier = items.filter(item => String(item.identifier ?? "").toLocaleLowerCase() === normalized);
   if (byIdentifier.length === 1) return byIdentifier[0];
-  const byName = actor.items?.filter?.(item => String(item.name ?? "").toLowerCase() === text.toLowerCase()) ?? [];
+  const byName = items.filter(item => String(item.name ?? "").toLocaleLowerCase() === normalized);
   if (byName.length === 1) return byName[0];
+  const partialMatches = items.filter(item => {
+    const identifier = String(item.identifier ?? "").toLocaleLowerCase();
+    const name = String(item.name ?? "").toLocaleLowerCase();
+    return (identifier && identifier.includes(normalized)) || (name && name.includes(normalized));
+  });
+  if (partialMatches.length === 1) return partialMatches[0];
   try {
     const resolved = await fromUuid(text);
     if (resolved?.documentName === "Item" && resolved.parent?.uuid === actor.uuid) return resolved;
@@ -1299,47 +1314,47 @@ async function findActorItemReference(actor, reference) {
   return null;
 }
 
+function activityCollectionForActor(actor) {
+  return Array.from(actor?.items ?? []).flatMap(item => activityCollection(item));
+}
+
 /**
- * Resolve a triggered Activity from an activity UUID, ItemUUID::ActivityName,
- * ItemName::ActivityName, Item.<item reference>.<activity reference>, or a unique
- * Activity name on the reactor's actor.
+ * Resolve by Activity UUID, ItemUUID::ActivityName, ItemName::ActivityName,
+ * Item.<item>.Activity.<activity>, Item.<item>.<activity>, or unique Activity name.
+ * Name references accept unique case-insensitive partial matches and reject ambiguity.
  */
 async function resolveExternalTriggeredActivity(actor, reference) {
   const raw = String(reference ?? "").trim();
   if (!raw) return null;
   const prefixedPath = /^Activity\./i.test(raw) ? raw.slice("Activity.".length) : raw;
-
-  // Prefer a complete Activity UUID. Foundry resolves Actor/Item/Activity UUID paths.
-  for (const candidate of [...new Set([raw, prefixedPath])]) {
+  const candidates = [...new Set([raw, prefixedPath])];
+  for (const candidate of candidates) {
     try {
       const byUuid = await fromUuid(candidate);
       if (byUuid && typeof byUuid.use === "function" && byUuid.item) return byUuid;
-    } catch (_) { /* Try the supported name-based forms below. */ }
+    } catch (_) { /* Try name-based forms below. */ }
   }
-
-  // Explicit UUID path support, useful on builds where fromUuid does not resolve an
-  // Activity pseudo-document directly: Actor.<id>.Item.<id>.Activity.<id>.
-  for (const candidate of [...new Set([raw, prefixedPath])]) {
-    const activityPathIndex = candidate.lastIndexOf(".Activity.");
-    if (activityPathIndex <= 0) continue;
-    const itemUuid = candidate.slice(0, activityPathIndex);
-    const activityRef = candidate.slice(activityPathIndex + ".Activity.".length);
-    const item = await findActorItemReference(actor, itemUuid);
-    const activity = findActivityOnItem(item, activityRef);
-    if (activity) return activity;
+  for (const candidate of candidates) {
+    const markers = [];
+    const markerRegex = /\.Activity\./ig;
+    let match;
+    while ((match = markerRegex.exec(candidate))) markers.push({ index: match.index, length: match[0].length });
+    for (const marker of markers.reverse()) {
+      let itemRef = candidate.slice(0, marker.index);
+      const activityRef = candidate.slice(marker.index + marker.length);
+      itemRef = itemRef.replace(/^Item\./i, "");
+      const item = await findActorItemReference(actor, itemRef);
+      const activity = findActivityOnItem(item, activityRef);
+      if (activity) return activity;
+    }
   }
-
-  // Names can contain spaces and dots. The double-colon separator avoids ambiguity.
   const explicitSeparator = prefixedPath.indexOf("::");
   if (explicitSeparator > 0) {
-    const item = await findActorItemReference(actor, prefixedPath.slice(0, explicitSeparator));
+    const item = await findActorItemReference(actor, prefixedPath.slice(0, explicitSeparator).replace(/^Item\./i, ""));
     return findActivityOnItem(item, prefixedPath.slice(explicitSeparator + 2));
   }
-
   let path = prefixedPath;
   if (/^Item\./i.test(path)) path = path.slice(5);
-  // Accept Item.<item name or id>.<activity name or id> by trying every split,
-  // from right to left, so activity names containing dots remain possible.
   const splitPositions = [];
   for (let index = path.indexOf("."); index >= 0; index = path.indexOf(".", index + 1)) splitPositions.push(index);
   for (const splitIndex of splitPositions.reverse()) {
@@ -1349,18 +1364,51 @@ async function resolveExternalTriggeredActivity(actor, reference) {
     const activity = findActivityOnItem(item, activityRef);
     if (activity) return activity;
   }
-
-  // A bare Activity name/identifier is supported only when unique on the actor.
-  const matches = activityCollectionForActor(actor).filter(activity => {
-    return String(activity.id ?? activity._id ?? "") === path
-      || String(activity.identifier ?? "").toLowerCase() === path.toLowerCase()
-      || String(activity.name ?? "").toLowerCase() === path.toLowerCase();
+  const allActivities = activityCollectionForActor(actor);
+  const normalized = path.toLocaleLowerCase();
+  const exactMatches = allActivities.filter(activity =>
+    String(activity.id ?? activity._id ?? "") === path
+      || String(activity.identifier ?? "").toLocaleLowerCase() === normalized
+      || String(activity.name ?? "").toLocaleLowerCase() === normalized
+  );
+  if (exactMatches.length === 1) return exactMatches[0];
+  const partialMatches = allActivities.filter(activity => {
+    const identifier = String(activity.identifier ?? "").toLocaleLowerCase();
+    const name = String(activity.name ?? "").toLocaleLowerCase();
+    return (identifier && identifier.includes(normalized)) || (name && name.includes(normalized));
   });
-  return matches.length === 1 ? matches[0] : null;
+  return partialMatches.length === 1 ? partialMatches[0] : null;
 }
 
-function activityCollectionForActor(actor) {
-  return Array.from(actor?.items ?? []).flatMap(item => activityCollection(item));
+function normalizeExternalActivityTargetMode(value) {
+  const mode = String(value ?? "").trim().toLowerCase();
+  return ["actor", "target", "self"].includes(mode) ? mode : null;
+}
+
+function parseExternalMacroActivityReturn(result) {
+  let activityReference = null;
+  let targetMode = null;
+  let cancelOriginalAfterActivity = false;
+  if (typeof result === "string") {
+    activityReference = result.trim();
+    const targetSuffix = activityReference.match(/\s+(actor|target|self)\s*$/i);
+    if (targetSuffix) {
+      targetMode = normalizeExternalActivityTargetMode(targetSuffix[1]);
+      activityReference = activityReference.slice(0, targetSuffix.index).trim();
+    }
+  } else if (result && typeof result === "object") {
+    const action = String(result.action ?? "").trim().toLowerCase();
+    if (action === "cancel" || action === "continue") return { action };
+    if (action === "activity") {
+      const activityValue = result.activityUuid ?? result.activity ?? result.trigger;
+      activityReference = typeof activityValue === "string" ? activityValue.trim() : activityValue?.uuid ?? null;
+      targetMode = normalizeExternalActivityTargetMode(result.targetMode ?? result.destination ?? result.targetOption ?? result.target);
+      cancelOriginalAfterActivity = result.cancelOriginal === true;
+    } else if (typeof result.use === "function" && result.item) {
+      activityReference = result.uuid ?? null;
+    }
+  }
+  return { activityReference, targetMode, cancelOriginalAfterActivity };
 }
 
 async function evaluateExternalActivityNumber(rawValue, actor) {
@@ -1601,7 +1649,7 @@ async function useExternalTriggeredActivity(activity, actor, suppressItemMacroUu
   }
 }
 
-async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid = null }) {
+async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid = null, targetMode = null, destinationTokenUuid = null }) {
   const actor = await fromUuid(actorUuid);
   if (!actor?.items) throw new Error(`Could not resolve the reactor Actor: ${actorUuid}`);
   const reference = String(trigger ?? "").trim();
@@ -1633,8 +1681,36 @@ async function runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, sup
   }
   const midi = game.modules.get("midi-qol")?.api;
   const templateType = String(activity.target?.template?.type ?? "").trim().toLowerCase();
-  // Area activities should follow the normal Activity UI flow (template placement,
-  // activation dialog, scaling, consumption, and subsequent actions remain system-owned).
+  const explicitTargetMode = normalizeExternalActivityTargetMode(targetMode);
+
+  // An explicit Item Macro target mode skips this module's custom target picker.
+  // D&D5e/Midi still own normal Activity use, template, scaling and consumption.
+  if (explicitTargetMode) {
+    let destinationDocument = null;
+    if (explicitTargetMode === "self") destinationDocument = reactorToken?.document ?? reactorToken;
+    else {
+      try { destinationDocument = destinationTokenUuid ? await fromUuid(destinationTokenUuid) : null; }
+      catch (_) { /* Resolve through active scene placeables below. */ }
+    }
+    const destinationId = destinationDocument?.id ?? destinationDocument?.document?.id;
+    const destinationPlaceable = (destinationDocument?.uuid && canvas?.tokens?.placeables?.find(token => token.document?.uuid === destinationDocument.uuid))
+      ?? (destinationId && canvas?.tokens?.get?.(destinationId))
+      ?? normalizeToken(destinationDocument);
+    if (!destinationPlaceable?.actor || typeof destinationPlaceable.setTarget !== "function") {
+      ui.notifications?.error("External Reaction: the requested '" + explicitTargetMode + "' Activity target could not be resolved to a token on the active scene.");
+      warn("Explicit Item Macro Activity target was unavailable; refusing to open the target picker as a fallback.", {
+        actor: actor.name, activity: activity.name, targetMode: explicitTargetMode, destinationTokenUuid
+      });
+      return false;
+    }
+    if (!game.user.isGM && destinationPlaceable.document?.hidden) {
+      ui.notifications?.error("External Reaction: the selected Activity target is hidden from this player.");
+      return false;
+    }
+    await useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid, [destinationPlaceable]);
+    return true;
+  }
+
   if (templateType && templateType !== "none") {
     await useExternalTriggeredActivity(activity, actor, suppressItemMacroUuid);
     return true;
@@ -2109,9 +2185,9 @@ Hooks.once("ready", () => {
     });
     return result === true;
   });
-  socket.register("triggerExternalActivity", async ({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid }) => {
+  socket.register("triggerExternalActivity", async ({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid, targetMode, destinationTokenUuid }) => {
     try {
-      return await runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid });
+      return await runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid, targetMode, destinationTokenUuid });
     } catch (err) {
       error(`Triggered Activity '${String(trigger ?? "")}' failed.`, err);
       ui.notifications?.error(`External Reaction: failed to use triggered Activity '${String(trigger ?? "")}'. Check the console for details.`);
@@ -2810,22 +2886,10 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
     return { action: "continue", trigger: eventContext };
   }
 
-  let activityReference = null;
-  let cancelOriginalAfterActivity = false;
-  if (result && typeof result === "object" && typeof result.use !== "function") {
-    const action = String(result.action ?? "").trim().toLowerCase();
-    if (action === "cancel") return { action: "cancel", trigger: eventContext };
-    if (action === "continue") return { action: "continue", trigger: eventContext };
-    if (action === "activity") {
-      const activityValue = result.activityUuid ?? result.activity ?? result.trigger;
-      activityReference = typeof activityValue === "string" ? activityValue : activityValue?.uuid ?? null;
-      cancelOriginalAfterActivity = result.cancelOriginal === true;
-    }
-  } else if (result && typeof result === "object" && typeof result.use === "function" && result.item) {
-    activityReference = result.uuid ?? null;
-  } else if (typeof result === "string") {
-    activityReference = result.trim();
-  }
+  const parsedActivityReturn = parseExternalMacroActivityReturn(result);
+  if (parsedActivityReturn.action === "cancel") return { action: "cancel", trigger: eventContext };
+  if (parsedActivityReturn.action === "continue") return { action: "continue", trigger: eventContext };
+  const { activityReference, targetMode, cancelOriginalAfterActivity } = parsedActivityReturn;
 
   if (activityReference) {
     const activityDocument = await resolveExternalTriggeredActivity(reactor.actor, activityReference);
@@ -2835,19 +2899,43 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
       });
       return { action: "continue", trigger: eventContext };
     }
-    const token = normalizeToken(reactor.token) ?? findTokenForActor(reactor.actor);
-    const tokenUuid = token?.document?.uuid ?? token?.uuid;
+    const reactorToken = normalizeToken(reactor.token) ?? findTokenForActor(reactor.actor);
+    const tokenUuid = reactorToken?.document?.uuid ?? reactorToken?.uuid;
+    const workflowTargetCandidates = [
+      ...Array.from(workflow?.hitTargets ?? []),
+      ...Array.from(workflow?.hitTargetsEC ?? []),
+      ...Array.from(workflow?.targets ?? []),
+      ...Array.from(stageContext.targets ?? [])
+    ].map(normalizeToken).filter(token => token?.actor);
+    const initiatingActorToken = normalizeToken(stageContext.actionActorToken) ?? normalizeToken(triggerToken)
+      ?? getWorkflowToken(workflow);
+    const initiatingTargetToken = normalizeToken(stageContext.actionTargetToken)
+      ?? workflowTargetCandidates[0]
+      ?? null;
+    let destinationToken = null;
+    if (targetMode === "actor") destinationToken = initiatingActorToken;
+    else if (targetMode === "target") destinationToken = initiatingTargetToken;
+    else if (targetMode === "self") destinationToken = reactorToken;
+    if (targetMode && !destinationToken) {
+      warn("Item Macro selected an explicit Activity target mode, but its token could not be resolved; no target picker will be opened.", {
+        reactor: reactor.actor?.name, flagKey, activityReference, targetMode
+      });
+      return { action: "continue", trigger: eventContext };
+    }
+    const destinationTokenUuid = destinationToken?.document?.uuid ?? destinationToken?.uuid ?? null;
     try {
       const started = await socket.executeAsUser("triggerExternalActivity", recipient.id, {
         actorUuid: reactor.actor.uuid,
         tokenUuid,
         trigger: activityDocument.uuid ?? activityReference,
-        suppressItemMacroUuid: macroItem?.uuid ?? null
+        suppressItemMacroUuid: macroItem?.uuid ?? null,
+        targetMode,
+        destinationTokenUuid
       });
-      if (started === false) debug("Item Macro returned an Activity, but its use was cancelled or unavailable.", { flagKey, activityReference });
-      return { action: cancelOriginalAfterActivity && started !== false ? "cancel" : "continue", trigger: eventContext, activityUuid: activityDocument.uuid };
+      if (started === false) debug("Item Macro returned an Activity, but its use was cancelled or unavailable.", { flagKey, activityReference, targetMode });
+      return { action: cancelOriginalAfterActivity && started !== false ? "cancel" : "continue", trigger: eventContext, activityUuid: activityDocument.uuid, targetMode };
     } catch (err) {
-      error(`Could not trigger the Activity returned by the Item Macro for ${reactor.actor?.name}.`, err);
+      error("Could not trigger the Activity returned by the Item Macro for " + reactor.actor?.name + ".", err);
       return { action: "continue", trigger: eventContext };
     }
   }
@@ -2968,6 +3056,10 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
     }
     state.seenPasses.add(passKey);
     const targets = [...(stageContext.targets ?? workflow.targets ?? game.user.targets ?? [])].map(normalizeToken).filter(Boolean);
+    const actionTargetToken = normalizeToken(stageContext.actionTargetToken)
+      ?? [...Array.from(workflow?.hitTargets ?? []), ...Array.from(workflow?.hitTargetsEC ?? []), ...targets]
+        .map(normalizeToken).find(token => token?.actor)
+      ?? null;
     const actorMap = collectSceneActors([actionActorToken, ...targets].filter(Boolean));
     const gm = game.users.find(user => user.active && user.isGM);
 
@@ -3001,7 +3093,7 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
         const actionKind = eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse";
         const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken, {
           ...stageContext, actionKind, phase: macroPass, actionType, activity, item, eventFlags,
-          actionActorToken, actionActor, actionTargetToken: targets[0] ?? actionActorToken
+          actionActorToken, actionActor, actionTargetToken: actionTargetToken ?? actionActorToken
         }, midi);
         if (!activationAllowed || !countAvailable(actor, flagData, flagKey)) continue;
         if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
@@ -3014,7 +3106,7 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
         const outcome = await executeExternalItemMacroTrigger({
           reactor, workflow, flagKey, flagData, recipient, socket,
           triggerToken: actionActorToken, eventFlags, accepted, macroPass,
-          stageContext: { ...stageContext, actionActorToken, actionActor, item, activity }
+          stageContext: { ...stageContext, actionActorToken, actionActor, actionTargetToken, targets, item, activity }
         });
         if (outcome.action === "cancel") {
           log(`Item Macro trigger cancelled the remaining Midi-QoL workflow at ${macroPass} (${flagKey}).`, outcome.trigger);
@@ -4231,14 +4323,35 @@ async function modifyExternalDamageRolls(workflow, inputRolls, value, reactor, f
   return { rolls, modified: newRoll !== base || newRoll.total !== base.total || newRoll.formula !== base.formula, modifiedRoll: newRoll };
 }
 async function collectExternalDamageReactors(workflow, midi) {
+  const activity = workflow?.activity ?? workflow?.item?.system?.activities?.get?.(workflow?.activityId) ?? null;
   const actionType = workflow?.activity?.actionType ?? workflow?.item?.system?.actionType ?? "other";
+  const actionActorToken = getWorkflowToken(workflow);
+  const hitTargets = [
+    ...Array.from(workflow?.hitTargets ?? []),
+    ...Array.from(workflow?.hitTargetsEC ?? [])
+  ].map(normalizeToken).filter(token => token?.actor);
+  const eventFlags = getExternalWorkflowEventFlags(workflow, { actionType, activity, item: activity?.item ?? workflow?.item });
+  // Midi may reach damage-roll preparation for an attack whose original attack missed.
+  // With no hit targets there is no successful attack damage to modify. This is attack-only.
+  if (eventFlags.attack && hitTargets.length === 0) {
+    debug("Skipping External Reaction damage bonuses because the attack workflow has no hit targets.", {
+      actor: workflow?.actor?.name, actionType, isHit: workflow?.isHit, isMiss: workflow?.isMiss,
+      selectedTargets: Array.from(workflow?.targets ?? []).map(token => normalizeToken(token)?.actor?.name).filter(Boolean)
+    });
+    return {
+      reactors: [],
+      referenceToken: actionActorToken,
+      actionActorToken,
+      actionTargetToken: null,
+      actionType,
+      activity
+    };
+  }
   const actorMap = collectSceneActors(workflow?.targets ? [...workflow.targets] : []);
   const gm = game.users.find(user => user.active && user.isGM);
   const reactors = [];
-  const actionActorToken = getWorkflowToken(workflow);
   const damageTargetCandidates = [
-    ...(workflow?.hitTargets ?? []),
-    ...(workflow?.hitTargetsEC ?? []),
+    ...hitTargets,
     ...(workflow?.targets ?? [])
   ];
   const actionTargetToken = damageTargetCandidates.map(normalizeToken).find(token => token?.actor) ?? null;

@@ -1,3 +1,19 @@
+## v0.10.9-beta.1 — Item Macro Activity returns, target options, and missed-attack damage
+
+Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL, and socketlib. These cases require in-world verification.
+
+- [ ] Return a full Activity UUID from a reactor Item Macro; the Activity starts exactly once on the reactor's owning client.
+- [ ] Return "Item.Test Item.Activity.Test Activity" and verify Item Test Item / Activity Test Activity resolves.
+- [ ] Return "Item.Test.Activity.Test" and verify the compact name form resolves.
+- [ ] Return unique partial item/activity names, e.g. "Item.Test Item.Activity.Test Act"; ambiguous partial matches must not select arbitrarily.
+- [ ] Return "Item.Test Item.Activity.Test Activity actor"; the Activity targets the original initiating actor and the module's target picker is skipped.
+- [ ] Repeat with suffix target and self; verify the original target and reactor token are selected respectively.
+- [ ] Test structured return { action: "activity", activity: "...", target: "actor" } and with targetMode: "self".
+- [ ] If an explicit actor/target token is unavailable on the reactor's scene, confirm the module reports the problem and does not silently open the target picker.
+- [ ] A normal UUID in flags.external-reaction.optional.NAME.activity.trigger still works without Item Macro return handling.
+- [ ] With damage.all = 1d4 and activation = damage, a missed weapon/spell attack does not prompt or consume the count; a hit still prompts and applies the bonus.
+- [ ] Fireball or another saving-throw-based damage workflow still offers eligible damage reactions because the guard only applies to attack workflows.
+
 # External Reaction v0.10.8 — Release verification
 
 **Target environment:** Foundry VTT 14.369 · D&D 5e 6.0.6 · Midi-QoL 14.6.4 · socketlib.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.9-beta.1 — Activity return targets and missed-attack damage guard
+
+- Resolve Item Macro Activity returns by full UUID, explicit Item/Activity name path, compact Item/Activity path, or unique partial names; reject ambiguous matches.
+- Support optional Activity return suffixes actor, target, and self to bypass External Reaction's custom target selector and preselect the original initiating actor, original target, or reactor. Structured Activity results can use target or targetMode.
+- Skip External Reaction damage bonus prompts when an attack workflow has no hit targets, while keeping saving-throw-based and other non-attack damage reactions available.
+- Add regression tests and reference documentation. This is a beta build for in-world validation before stable promotion.
+
 Notable changes for each release are recorded here. GitHub Actions validates and packages releases when the manifest version changes on `main`.
 
 ## 0.10.8
