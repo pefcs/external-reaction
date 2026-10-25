@@ -1,3 +1,17 @@
+## Local test build — Active Effect compendium
+
+- [ ] Confirm the module exposes **External Reaction — Practical Examples** as a D&D 5e ActiveEffect compendium.
+- [ ] Open several entries and verify their names, descriptions, and change lists survive import.
+- [ ] Confirm only **Defense — Arcane Aegis** sets `displayBonusRolls = true` and **Check — Private Oracle's Insight** sets `displayBonusRolls = false`; the other entries should inherit Midi-QoL's configured setting.
+- [ ] Drag an immediately usable example onto a test character, then confirm its effect changes and flags appear on the actor.
+- [ ] Test Arcane Aegis / Shieldbearer's Brace against attacks; confirm only matching conditions offer a reaction.
+- [ ] Test Protective Intercession and Agile Escape on failed saves.
+- [ ] Test Trained Reflexes and Expert's Edge with proficient, half-proficient, and expertise skill checks.
+- [ ] Test typed damage examples with Midi-QoL and verify each extra DamageRoll uses the configured damage type.
+- [ ] Test count resources (reaction, bonus action, each-turn, each-round, spell slot, ItemUses) and confirm declined/cancelled prompts do not unexpectedly spend resources.
+- [ ] Confirm the two Template entries are disabled (ActivityUses and damage-triggered Item Macro) and their descriptions explain the required configuration. There is no direct embedded-Activity trigger template.
+- [ ] Confirm all example Active Effects can be removed cleanly from the test character.
+
 ## v0.10.9 — release verification
 
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
@@ -50,7 +64,7 @@ Test in a disposable world. These checks cover Item Macro source resolution and 
 - [ ] If an Item's legacy `itemacro` flag scope is not registered/active, Item Macro lookup does not throw or block workflow dispatch; DAE/DIME `flags.dae.macro` still resolves normally, and missing macros fail gracefully.
 - [ ] With `activation = cast`, a cantrip spell Activity triggers at the explicitly configured `preAttackRoll` stage; confirm the test dialog reports `preAttackRoll`.
 - [ ] With no External Reaction `itemMacro` optional configured, ordinary Activities still enter their normal workflow; the `midi-qol.preTargeting` dispatcher-installation hook must not abort item use.
-- [ ] A normal optional with an Activity UUID in `activity.trigger` still queues and uses that Activity as before.
+- [ ] Do not configure a direct Activity UUID in `activity.trigger`; launch an Activity by returning its reference from the Item Macro instead.
 - [ ] `activity.trigger = itemMacro` with no pass dispatches at `postActiveEffects`, as External Reaction's configured default for a bare trigger. No prompt should appear before then.
 - [ ] `activity.trigger = "ItemMacro, postAttackRoll"` and the equivalent separate `activity.macroPass = postAttackRoll` both prompt only after the attack roll has been adjudicated.
 - [ ] At `postAttackRoll`, the macro sees the completed attack roll and known hit/miss result; if it returns `"cancel"`, the attack roll remains visible but the normal damage roll and later processing are aborted.
@@ -387,34 +401,22 @@ Use a third-party reactor and an attack where the raw attack total is below the 
 - [ ] Repeat with `ac.hit` and `ac` to confirm generic selector fallback behavior remains correct.
 
 
-## 10. Triggered Activity (`activity.trigger`, v0.9.0; V14 targeting fix in v0.9.2; batch timing fix in v0.9.3)
+## Activity return values from Item Macros (supported path)
 
-- [ ] **Foundry V14 target API:** accept a direct-target Activity reaction with one target. Confirm no `game.user.updateTokenTargets is not a function` error occurs and the Activity starts.
-- [ ] **Multiple selected targets:** choose two or more targets. Confirm previous targets are replaced once and every selected target remains targeted when the Activity starts.
-- [ ] **Existing targets replaced:** pre-target an unrelated token before using the selector; after the selector completes, only the selected tokens should be targeted.
+Test in a disposable Foundry V14 world. The Activity must belong to an Item embedded on the reactor's Actor. Configure the granting Active Effect's `flags.external-reaction.optional.NAME.activity.trigger` to invoke the reactor's stored Item Macro; that field selects the Item Macro/pass and must not contain the Activity UUID itself.
 
-Use one reaction option that already prompts reliably (e.g. `attack.all = +1`, `ac = +1`, or `save.all = +1`) and add the additional Active Effect change `activity.trigger`. The Activity should be on an embedded Item on the reactor's Actor.
-
-- [ ] **Full Activity UUID:** set `activity.trigger` to `Actor.<actorId>.Item.<itemId>.Activity.<activityId>`; accept the optional reaction and confirm the Activity begins on the reactor owner's client.
-- [ ] **Item/activity names:** set `activity.trigger = Item.<Item Name>.<Activity Name>` and confirm it resolves the same Activity.
-- [ ] **Explicit pair:** set `activity.trigger = <Item Name>::<Activity Name>`; confirm names containing spaces resolve. If either name contains dots, use this double-colon form.
-- [ ] **Missing/ambiguous reference:** use a deliberately invalid reference and confirm a clear notification/console diagnostic, with no crash in the original workflow.
-- [ ] **Area Activity:** use a valid Activity with an area shape configured. Confirm no External Reaction checkbox picker appears and the normal template placement / Activity configuration flow starts.
-- [ ] **Single direct target:** use range `60 ft`, target type `creature`, target count `1`. Confirm only tokens in range are listed, one token can be selected, and the Activity runs with that target.
-- [ ] **Target count:** configure target count `2`. Confirm one or two targets can be selected, a third selection is rejected, and confirming with zero selections asks for a target again.
-- [ ] **Enemy filtering:** set target type `enemy`; only Hostile-disposition tokens within range should be listed.
-- [ ] **Ally filtering:** set target type `ally`; only Friendly-disposition tokens within range should be listed.
-- [ ] **Self targeting:** set target type `self`; confirm the reactor token is automatically targeted and the normal Activity usage starts without a target picker.
-- [ ] **Other target types:** test `creature` and confirm eligible Actor tokens of either disposition are listed.
-- [ ] **Midi visibility:** enable the Activity's *Targets you can see* checkbox and set Midi-QoL Mechanics > Targets you can see to Enforce. Confirm unseen targets are omitted from the selector; set the mechanic to Warn and confirm the selector does not pre-filter them.
-- [ ] **Metric scene units:** with a scene whose grid units are meters, test a range in feet and confirm distance conversion is plausible. Also test the ordinary feet-scene path.
-- [ ] **Cancel target picker:** cancel the target selector after accepting the optional reaction. Confirm the triggered Activity doesn't run, but note whether the existing optional bonus still resolves; this is the intended current behavior.
-- [ ] **Workflow regression:** test the trigger from an attack, save, ability check/skill, damage, and AC optional reaction. Confirm no duplicate Activity start and no unrelated reactor prompt is lost.
-- [ ] **Resource/consumption:** use a triggered Activity that consumes an action/uses/slot and confirm Foundry/Midi's normal Activity consumption and chat output still work.
-- [ ] **AOE queue timing / no repeated selector:** use a save-based AOE with four eligible targets and one optional flag containing `save.all = +5`, `count = 2` (or an ItemUses count of 2), and `activity.trigger = <Activity UUID>`. Accept the optional reaction for two targets. Confirm all save-reaction prompts resolve first, then exactly one Activity target selector opens—not one after each accepted count. Confirm the optional bonus is applied twice and the count is consumed twice.
-- [ ] **Multiple optional groups:** accept different optional flag keys with their own `activity.trigger` values during one workflow. Confirm each distinct accepted trigger starts only after the batch's other reaction prompts have resolved, and the same flag/Activity accepted multiple times is deduplicated to one Activity start.
-
-If an Activity fails, provide the exact `activity.trigger` value, the Activity type and targeting settings, the browser-console error, and whether the Activity works when clicked directly from the character/item sheet.
+- [ ] **Macro invocation:** store the Item Macro through DAE/DIME or supported legacy Item Macro storage, set `activity.trigger = ItemMacro, postAttackRoll`, and accept the eligible option. Confirm the macro runs on the reactor owner's client after hit/miss adjudication.
+- [ ] **No double registration:** do not add the same macro to Midi-QoL On Use Macro stages. Confirm it runs once and does not recursively prompt when it launches an Activity from its own Item.
+- [ ] **Full UUID return:** return `"Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId>"`. Confirm the Activity starts on the reactor's client and the original workflow continues.
+- [ ] **Name/path return:** return a supported Item/Activity reference string. Confirm the correct embedded Activity resolves; ambiguous or missing references produce a useful diagnostic without crashing the original workflow.
+- [ ] **Explicit initiator target:** return the Activity UUID with the ` actor` suffix, or `{ action: "activity", activityUuid: "...", target: "actor" }`. Confirm the original initiating Actor is targeted without the module's custom target picker.
+- [ ] **Other target modes:** test `target` and `self` modes and confirm they refer to the original action target and the reactor respectively.
+- [ ] **Direct-target Activity:** with no explicit return target, confirm the Activity-aware selector respects target type, range, target count, and visibility settings; chosen targets replace the previous target set through Foundry V14's `Token#setTarget()` API.
+- [ ] **Area Activity:** return an Activity with an area shape configured. Confirm normal template placement / Activity configuration begins rather than the direct-target selector.
+- [ ] **Structured cancellation:** return `{ action: "activity", activityUuid: "...", cancelOriginal: true }`. Confirm the Activity runs, then the remaining original workflow is aborted.
+- [ ] **Continue/cancel:** return `"continue"` / `false` and verify the original workflow proceeds; return `"cancel"` / `true` and verify later workflow processing aborts without launching an Activity.
+- [ ] **Missing Activity / macro error:** confirm a missing source Item, missing Item Macro, invalid Activity reference, or Item Macro error logs a useful message and does not crash or silently reroute the original workflow.
+- [ ] **No direct-UUID config:** keep the Activity UUID in the Item Macro's return value, not in `activity.trigger`.
 
 ## v0.9.1 — Count concurrency and actor identity regressions
 
@@ -441,21 +443,12 @@ Create a reactor with at least one ordinary spell slot and, if possible, a Pact 
 - [ ] **Ordinary slot selector:** when the option is accepted, the second dialog lists only ordinary slot levels at or above the minimum and with remaining uses. Selecting one and pressing **Cast** reduces that level's remaining slot count by exactly one, then applies the optional roll bonus.
 - [ ] **Pact Magic eligibility/consumption:** configure a Warlock or multiclass Actor with Pact Magic. A Pact Magic slot qualifies only if its own `level` is at least the required minimum. The selector lists Pact Magic separately from ordinary slots, and selecting it reduces `system.spells.pact.value` by one.
 - [ ] **Higher-level choice:** with `count = spellslot 2`, verify a level 3, 4, or higher ordinary slot can be selected and is consumed from its own level, not from a lower-level pool.
-- [ ] **Cancel after accepting:** accept the first optional-reaction prompt, then cancel the spell-slot selector or close it. Confirm no slot is spent, the optional bonus does not apply, the option's other resources/counts are not consumed, and no `activity.trigger` is queued.
+- [ ] **Cancel after accepting:** accept the first optional-reaction prompt, then cancel the spell-slot selector or close it. Confirm no slot is spent, the optional bonus does not apply, the option's other resources/counts are not consumed, and no Item Macro Activity is started.
 - [ ] **Combined count and slot:** set `count = reaction` and `countAlt = spellslot 2`. Accept and choose a qualifying slot; verify the slot is spent and the character reaction is marked used. Then verify a second offer is blocked by the used reaction.
 - [ ] **Combined item uses and slot:** set `count = ItemUses.<Item Name>` and `countAlt = spellslot 1`. Accept once and choose a slot. Confirm both the item use and selected slot are spent exactly once.
 - [ ] **No eligible slot:** set `count = spellslot 5` when the Actor has no slot/Pact Magic pool at level 5 or higher. No optional prompt should appear.
 - [ ] **Final available slot:** with one qualifying slot remaining, accept and spend it. The accepted reaction must still apply; the post-prompt eligibility check must not reject it just because the slot was correctly reduced to zero.
 - [ ] **Two spell-slot requirements:** set `count = spellslot 2` and `countAlt = spellslot 4`. The selector should list only level 4+ slots and require just one selected slot; it should not prompt twice.
-
-## v0.9.3 — Activity trigger batch timing
-
-- [ ] Accepted Activity triggers are queued instead of launching from the reaction prompt callback.
-- [ ] The save batch flush occurs after `checkSaves` has processed all AOE targets.
-- [ ] A single reactor + optional flag key + Activity reference accepted against multiple targets produces one Activity start per workflow batch.
-- [ ] Target selector / template placement does not appear while other optional reactions in that batch remain unresolved.
-- [ ] Triggered Activity can still start a nested workflow after the original reaction count locks have been released.
-
 
 ## v0.10.5 Item Macro hook regression cases
 

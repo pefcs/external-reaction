@@ -1,6 +1,6 @@
 # External Reaction
 
-External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. It also supports triggered D&D 5e Activities and External Reaction Item Macros.
+External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. External Reaction Item Macros can also launch embedded D&D 5e Activities by returning an Activity reference or structured result.
 
 **Current version: 0.10.9**  
 **Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
@@ -17,11 +17,17 @@ External Reaction extends Midi-QoL-style optional reactions so eligible creature
 - Run macro source in an isolated async scope so local declarations such as `const externalReaction = data.externalReaction ?? {};` do not collide with the module's Midi-compatible context bindings.
 - Guard optional Item Macro flag lookup when Foundry V14 does not register the legacy `itemacro` scope; support DAE/DIME and the supported legacy macro storage.
 
+## Example Active Effects Compendium
+
+The **External Reaction — Practical Examples** compendium includes ready-to-use D&D 5e Active Effects for realistic combat, saving throws, checks, skill proficiency, damage bonuses, activation conditions, and resource costs. Most examples can be dragged directly onto an actor; two templates are disabled until their character-specific ActivityUses or damage-triggered Item Macro details are configured. To launch an Activity, use the Item Macro workflow path and return the Activity reference from the macro—do not put the Activity UUID directly in `activity.trigger`. Most examples leave `displayBonusRolls` unset so Midi-QoL's own setting is respected, with two entries retained to demonstrate explicit overrides.
+
+See [Active Effect Examples](docs/ACTIVE-EFFECT-EXAMPLES.md) for the entry list, setup notes, and coverage.
+
 ## Item Macro setup and execution context
 
 Keep the Item Macro command stored on the source Item through your supported DAE/DIME or legacy Item Macro mechanism. **Do not also assign the same command to a Midi-QoL On Use Macro stage** when External Reaction owns its invocation; otherwise it can run twice or recurse when it launches an Activity from that Item.
 
-A bare `ItemMacro` trigger defaults to `postActiveEffects`. Specify another pass with `activity.trigger = "ItemMacro, postAttackRoll"` or set `activity.macroPass = postAttackRoll`.
+Configure the granting Active Effect with `flags.external-reaction.optional.NAME.activity.trigger = ItemMacro` to use the default `postActiveEffects` pass, or `ItemMacro, postAttackRoll` to select another workflow pass. To start an Activity, have the stored macro return its Activity UUID/reference (or a structured Activity result); the `activity.trigger` flag selects the Item Macro, not the Activity itself.
 
 The Item Macro executes on the selected reactor recipient's client, and the original workflow waits for its returned value. Document references in the context are re-resolved on that client. The `workflow` value is a **serializable snapshot**, not a live Midi-QoL Workflow instance, so code should not expect live Workflow methods or mutate the initiating workflow object directly. Actor APIs such as `actor.rollAbilityCheck()` run on the reactor's client and can show roll UI there.
 
@@ -29,7 +35,7 @@ Cancelling a workflow is not a rollback: earlier rolls, spent resources, or appl
 
 ## Documentation
 
-- [Technical reference](docs/REFERENCE.md) — supported flags, selectors, activation expressions, Item Macro execution, resource counts, spell slots, and triggered Activities.
+- [Technical reference](docs/REFERENCE.md) — supported flags, selectors, activation expressions, Item Macro execution, resource counts, spell slots, and Activity return values.
 - [Flag/value examples](docs/FLAG-VALUE-EXAMPLES.md) — copyable Active Effect flag examples.
 - [Regression test plan](TESTING.md) — release verification and regression scenarios.
 - [Changelog](CHANGELOG.md) — notable changes by version.

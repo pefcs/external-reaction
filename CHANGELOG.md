@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — Active Effect examples and Activity return documentation
+
+- Add the native D&D 5e Active Effect compendium `External Reaction — Practical Examples` with practical attack, AC, saving throw, ability check, skill check, damage, activation, and resource-count examples.
+- Remove most `displayBonusRolls` overrides so examples inherit Midi-QoL's configured behavior; retain one explicit `true` and one explicit `false` example.
+- Remove the direct embedded-Activity `activity.trigger` template. Launch Activities through an External Reaction Item Macro that returns an Activity UUID/reference or a structured Activity result instead.
+- Keep two disabled setup templates: ActivityUses cost configuration and damage-triggered Item Macro configuration.
+- Refresh the reference, flag/value guide, README, and regression checklist to document the supported Item Macro return-value path. Manifest version remains `0.10.9` until a separately approved release.
+
 ## 0.10.9
 
 - Add `skill.prof` and `skill.exp` activation shortcuts. The module identifies the skill being rolled and checks the original workflow target's D&D 5e skill proficiency; proficiency and expertise satisfy `skill.prof`, while only expertise satisfies `skill.exp`.

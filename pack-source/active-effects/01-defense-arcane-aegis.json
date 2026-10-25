@@ -1,0 +1,107 @@
+{
+  "_key": "!effects!e000000000000001",
+  "_id": "e000000000000001",
+  "name": "Defense — Arcane Aegis",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.ArcaneAegis.ac.hit",
+        "type": "override",
+        "value": "+5",
+        "phase": "initial",
+        "_id": "c000000000000001",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneAegis.activation",
+        "type": "override",
+        "value": "target == self && actor.disposition == \"hostile\" && CanSee",
+        "phase": "initial",
+        "_id": "c000000000000002",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneAegis.count",
+        "type": "override",
+        "value": "reaction",
+        "phase": "initial",
+        "_id": "c000000000000003",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneAegis.displayBonusRolls",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000004",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneAegis.rollMode",
+        "type": "override",
+        "value": "publicroll",
+        "phase": "initial",
+        "_id": "c000000000000005",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": true,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": false,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> A practiced defender catches an incoming blow at the last instant, turning a hit into a miss. This is an AC reaction for the creature wearing this effect.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. If an option has a count requirement, that resource is spent when the option is accepted, according to External Reaction's count handling.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1792930756020,
+    "modifiedTime": 1792930756020
+  }
+}

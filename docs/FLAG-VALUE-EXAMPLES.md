@@ -224,21 +224,53 @@ The count fields control availability and resource consumption. Add them to the 
 
 Use the exact literal values shown for special count formats. A `spellslot X` selector is cancelled if the user cancels the picker; no slot is spent and the optional reaction is not applied. If both count fields specify spell slots, the higher minimum controls which slots can be selected.
 
-## 9. Trigger a D&D 5e Activity after acceptance
+## 9. Start a D&D 5e Activity from an Item Macro return value
 
-Add `activity.trigger` to the same group as the option that prompts the player. The Activity must belong to an Item embedded on the reactor Actor.
+The supported route for launching a D&D 5e Activity from an External Reaction is to invoke an Item Macro and return the Activity reference from that macro. The Activity must be embedded in an Item on the reactor's Actor. Do **not** set `activity.trigger` directly to an Activity UUID; that field selects the Item Macro to run and the workflow pass.
+
+### Configure the granting Active Effect
 
 | Flag | Type | Value |
 |---|---|---|
-| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `Actor.abc123.Item.def456.Activity.ghi789` — Trigger the Activity identified by this full UUID after the player accepts. Replace the sample IDs with the actual Activity UUID. |
-| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `Activity.Actor.abc123.Item.def456.Activity.ghi789` — Same full UUID with an optional `Activity.` prefix. |
-| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `Shield::Shield` — Resolve an embedded Item named Shield and an Activity named Shield. Use the explicit pair form when names might contain dots. |
-| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `Item.Shield.Shield` — Resolve an embedded Item and Activity by exact case-insensitive names. |
-| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `Shield::abc123` — Resolve the Shield Item and an Activity by ID/name. Confirm the identifier resolves uniquely. |
-| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `abc123::Shield` — Resolve an embedded Item UUID/ID and an Activity named Shield. |
-| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `ghi789` — Use a unique Activity name/identifier/ID on the reactor's Actor. Avoid ambiguous names. |
+| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `ItemMacro` — Run the stored Item Macro at `postActiveEffects` by default. |
+| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `ItemMacro, postAttackRoll` — Run the macro after attack adjudication, before damage. Use another supported Midi-QoL pass when it better matches the feature. |
+| `flags.external-reaction.optional.NAME.activity.macroPass` | Override | `preItemRoll` — Optional separate pass setting; it overrides a pass embedded in `activity.trigger`. |
+| `flags.external-reaction.optional.NAME.count` | Override | `reaction` — Require and expend the reactor's Reaction when accepted. |
 
-The Activity is queued until the current reaction batch completes, and duplicate triggers for the same reactor/option/Activity are deduplicated within that batch. Area Activities use their normal template flow; direct-target Activities show a target picker. Cancelling the Activity's target picker skips the Activity but does not undo an already-accepted optional bonus.
+Keep the Item Macro command on the source Item using the supported DAE/DIME or legacy Item Macro storage. **Do not also register the same command in Midi-QoL's On Use Macro stages** when External Reaction owns its invocation, or it may run twice or recurse when it launches an Activity.
+
+### Return the Activity from the Item Macro
+
+A simple macro can return the Activity UUID:
+
+```js
+// Use the real UUID of an Activity embedded on the reactor's Actor.
+return "Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId>";
+```
+
+Use a structured return when you need to control targeting or whether the original workflow continues:
+
+```js
+return {
+  action: "activity",
+  activityUuid: "Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId>",
+  target: "actor",
+  cancelOriginal: true
+};
+```
+
+Supported targeting modes are `actor` (the Actor that initiated the original workflow), `target` (the original workflow target), and `self` (the reactor). A plain Activity UUID/reference uses the normal Activity flow: area Activities use template placement; direct-target Activities show an Activity-aware picker. You can also append ` actor`, ` target`, or ` self` to a string reference, e.g. `"Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId> actor"`, to skip the picker and explicitly choose the target. The full list of accepted Activity reference formats appears in [the Technical Reference](REFERENCE.md#start-an-activity-from-an-item-macro-return-value).
+
+### Return-value behavior
+
+| Return value | Meaning |
+|---|---|
+| An Activity UUID/reference string or Activity document | Start that Activity on the reactor's client, then continue the original workflow. |
+| `{ action: "activity", activityUuid: "...", cancelOriginal: true }` | Start the Activity, then abort the remaining original workflow. |
+| `"cancel"`, `true`, or `{ action: "cancel" }` | Abort the remaining original workflow without starting an Activity. |
+| `"continue"`, `false`, `null`, or no return value | Continue the original workflow without starting an Activity. |
+
+Cancellation does not roll back earlier rolls, consumed resources, HP changes, or effects. Pick the earliest macro pass that provides the context you need, and test the specific Activity and pass in a disposable world.
 
 ## 10. Bonus-roll display and roll mode
 
@@ -279,7 +311,7 @@ These are example **values** for supported roll-modifier flags such as `attack.*
 | `flags.external-reaction.optional.NAME.attack.all` | Override | `Macro.MyMacro` — Invoke a world macro named MyMacro through Midi-QoL's workflow macro system. |
 | `flags.external-reaction.optional.NAME.attack.all` | Override | `function.myRegisteredFunction` — Invoke a function registered with Midi-QoL; this is not a way to call arbitrary global functions. |
 
-**Unsupported:** `ActivityMacro` is intentionally not supported as a roll value. Use `activity.trigger` to invoke a D&D 5e Activity after an accepted option instead. Macro names/identifiers must match what Midi-QoL can resolve in the installed version.
+**Unsupported:** `ActivityMacro` is intentionally not supported as a roll value. To launch a D&D 5e Activity, configure the External Reaction Item Macro path (`activity.trigger = ItemMacro, <pass>`) and return the Activity UUID/reference from that Item Macro. Macro names/identifiers must match what Midi-QoL can resolve in the installed version.
 
 ## 12. Combining fields into practical options
 
@@ -312,14 +344,15 @@ The following are small recipes. Each row is still a separate Active Effect chan
 | `flags.external-reaction.optional.FireBrand.activation` | Override | `target.disposition == enemy && CanSee` — Require a visible enemy target. |
 | `flags.external-reaction.optional.FireBrand.criticalDamage` | Override | `true` — Use the special configured=false behavior for the bonus damage roll. |
 
-### Example D — Trigger an embedded Activity after an accepted reaction
+### Example D — Use an Item Macro to launch an embedded Activity
 
 | Flag | Type | Value |
 |---|---|---|
-| `flags.external-reaction.optional.CounterSpell.attack.all` | Override | `+2` — Offer +2 to the triggering attack roll. |
-| `flags.external-reaction.optional.CounterSpell.activity.trigger` | Override | `Actor.abc123.Item.def456.Activity.ghi789` — Trigger this embedded Activity after acceptance; replace with the real UUID. |
-| `flags.external-reaction.optional.CounterSpell.activation` | Override | `actor != self && CanSee` — Require a different initiating Actor that the reactor can see. |
-| `flags.external-reaction.optional.CounterSpell.count` | Override | `reaction` — Spend the reactor's reaction. |
+| `flags.external-reaction.optional.CounterSpell.activity.trigger` | Override | `ItemMacro, preItemRoll` — Invoke the reactor's stored Item Macro before the initiating item's roll. Use a later pass such as `postAttackRoll` when the macro needs the attack result. |
+| `flags.external-reaction.optional.CounterSpell.activation` | Override | `cast && actor != self && CanSee` — Only consider a visible cast initiated by another Actor. |
+| `flags.external-reaction.optional.CounterSpell.count` | Override | `reaction` — Require and expend the reactor's Reaction when accepted. |
+
+The Item Macro—not the Active Effect—chooses which embedded Activity to use. Have the macro return an Activity reference such as `Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId>`, or return a structured result such as `{ action: "activity", activityUuid: "...", cancelOriginal: true }`. The `activity.trigger` field is used to select the Item Macro and workflow pass; do not put the Activity UUID directly in this field. See Section 9 below for full setup steps and target-selection options.
 
 ### Example E — Spend a spell slot for an optional bonus
 
@@ -351,26 +384,24 @@ The following are small recipes. Each row is still a separate Active Effect chan
 
 ## External Reaction Item Macro workflow invocation
 
-This workflow-interception feature is distinct from using the `ItemMacro` string as a normal roll value. Configure an External Reaction Item Macro with the `activity.trigger` field on the reactor's granting Active Effect.
+This feature invokes an Item Macro at a chosen Midi-QoL workflow pass. It is separate from using the `ItemMacro` string as a normal roll value. Set `flags.external-reaction.optional.NAME.activity.trigger = ItemMacro` (default `postActiveEffects`) or `ItemMacro, <pass>`; use `activity.macroPass` to set the pass separately. The macro must be stored on the Item resolved from the granting Active Effect, and the same command must not also be registered as a Midi-QoL On Use Macro.
 
-| Active Effect change key | Value | Meaning |
-|---|---|---|
-| `flags.external-reaction.optional.NAME.activity.trigger` | `itemMacro` | Run the Item Macro at External Reaction's default `postActiveEffects` pass after the reactor accepts. |
-| `flags.external-reaction.optional.NAME.activity.trigger` | `ItemMacro, postAttackRoll` | Run the Item Macro after attack adjudication and before damage. |
-| `flags.external-reaction.optional.NAME.activity.macroPass` | `preItemRoll` | Set the macro pass separately; this overrides the default/embedded pass. |
-| `flags.external-reaction.optional.NAME.count` | `reaction` | Require and expend the reactor's reaction when accepting. Combine with `countAlt = spellslot 3` when a level 3+ slot is also needed. |
-
-Keep the command stored on the source Item using the DAE/DIME Item Macro mechanism or supported legacy storage. **Do not also register that same command in Midi-QoL's On Use Macro stages** when External Reaction owns its invocation; otherwise it can run twice or recurse when it launches an Activity.
-
-The macro runs on the reactor's selected client: the active player who owns the reactor Actor, or the GM for a GM-owned reactor/GM fallback. Its context is passed through `args[0]`. The initiating `workflow` is a serializable snapshot, not a live Midi-QoL Workflow instance. The wrapper isolates the macro's local scope, so declarations such as the following are safe:
+To start an embedded Activity, **return** its Activity UUID/reference or a supported structured result from the macro; do not place the Activity UUID directly in `activity.trigger`. For example:
 
 ```js
 const macroArgs = Array.isArray(args) ? args : [];
 const data = macroArgs[0] ?? {};
-const externalReaction = data.externalReaction ?? {};
 
-// A supported return value controls the original workflow.
-return "continue";
+// The reference must identify an Activity embedded on the reactor's Actor.
+return {
+  action: "activity",
+  activityUuid: "Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId>",
+  target: "actor" // optional: actor, target, or self
+};
 ```
 
-Supported results include `"cancel"` / `true` to abort the remaining workflow, `"continue"` / `false` to continue, an Activity UUID/reference to use that Activity on the reactor's client, or a supported structured Activity result. Cancellation is not a rollback: rolls, resources, HP, or effects already applied at a later pass are not automatically restored.
+A plain reference uses the normal Activity target/template flow. Add `cancelOriginal: true` to a structured Activity result to cancel the remaining initiating workflow after the Activity runs. See [Section 9](#9-start-a-dd-5e-activity-from-an-item-macro-return-value) for the full return contract and target-selection behavior.
+
+The macro runs on the reactor's selected client: the active player who owns the reactor Actor, or the GM for a GM-owned reactor/GM fallback. Its context is passed through `args[0]`. The initiating `workflow` is a serializable snapshot, not a live Midi-QoL Workflow instance. The wrapper isolates the macro's local scope, so local declarations such as `data` and `externalReaction` are safe.
+
+Supported workflow results include `"cancel"` / `true` to abort the remaining workflow, `"continue"` / `false` to continue, an Activity UUID/reference to use that Activity on the reactor's client, or a supported structured Activity result. Cancellation is not a rollback: rolls, resources, HP, or effects already applied at a later pass are not automatically restored.

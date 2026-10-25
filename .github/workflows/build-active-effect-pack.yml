@@ -1,0 +1,58 @@
+name: Build local Active Effect compendium test bundle
+
+on:
+  push:
+    branches:
+      - test/active-effect-example-compendium
+      - main
+    paths:
+      - 'module.json'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'TESTING.md'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'pack-source/**'
+      - 'tools/**'
+      - '.github/workflows/build-active-effect-pack.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-active-effect-pack.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Foundry pack compiler
+        run: npm install --no-save github:foundryvtt/foundryvtt-cli#main
+      - name: Validate Active Effect source and manifest
+        run: node tools/build-active-effect-pack.mjs --validate-only
+      - name: Compile native Active Effect compendium
+        run: node tools/build-active-effect-pack.mjs
+      - name: Verify compiled Active Effect compendium
+        run: node tools/build-active-effect-pack.mjs --verify
+      - name: Check module JavaScript syntax
+        run: node --check scripts/external-reaction.js
+      - name: Package installable module
+        run: |
+          mkdir -p dist/external-reaction
+          cp module.json README.md CHANGELOG.md TESTING.md dist/external-reaction/
+          cp -a scripts docs packs dist/external-reaction/
+          cd dist
+          zip -qr external-reaction-active-effect-examples-test.zip external-reaction
+      - uses: actions/upload-artifact@v4
+        with:
+          name: external-reaction-active-effect-examples-test
+          path: dist/external-reaction-active-effect-examples-test.zip
+          if-no-files-found: error
+          retention-days: 5

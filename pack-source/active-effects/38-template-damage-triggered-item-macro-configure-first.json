@@ -1,0 +1,87 @@
+{
+  "_key": "!effects!e000000000000038",
+  "_id": "e000000000000038",
+  "name": "Template — Damage-Triggered Item Macro (Configure First)",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.DamageItemMacroTemplate.activation",
+        "type": "override",
+        "value": "damage",
+        "phase": "initial",
+        "_id": "c000000000000371",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.DamageItemMacroTemplate.activity.trigger",
+        "type": "override",
+        "value": "ItemMacro, postActiveEffects",
+        "phase": "initial",
+        "_id": "c000000000000372",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.DamageItemMacroTemplate.count",
+        "type": "override",
+        "value": "reaction",
+        "phase": "initial",
+        "_id": "c000000000000373",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": false,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": true,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> DISABLED TEMPLATE. This special path is only for a reactor that has a compatible Item Macro command stored on its source Item via DAE/DIME or supported legacy Item Macro storage. Set the trigger to ItemMacro (or ItemMacro, postActiveEffects), keep activation exactly damage, and do not also register the same command in Midi-QoL On Use Macro stages. Enable only after configuring and testing the macro.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. If an option has a count requirement, that resource is spent when the option is accepted, according to External Reaction's count handling.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1792930952411,
+    "modifiedTime": 1792930952411
+  }
+}

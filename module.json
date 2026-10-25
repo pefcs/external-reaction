@@ -37,5 +37,29 @@
   "socket": true,
   "url": "https://github.com/pefcs/external-reaction",
   "manifest": "https://github.com/pefcs/external-reaction/releases/latest/download/module.json",
-  "download": "https://github.com/pefcs/external-reaction/releases/latest/download/module.zip"
+  "download": "https://github.com/pefcs/external-reaction/releases/latest/download/module.zip",
+  "packs": [
+    {
+      "name": "examples",
+      "label": "External Reaction — Practical Examples",
+      "path": "packs/examples",
+      "type": "ActiveEffect",
+      "system": "dnd5e",
+      "ownership": {
+        "PLAYER": "OBSERVER",
+        "ASSISTANT": "OWNER"
+      }
+    }
+  ],
+  "packFolders": [
+    {
+      "name": "External Reaction",
+      "sorting": "a",
+      "color": "#476579",
+      "packs": [
+        "examples"
+      ],
+      "folders": []
+    }
+  ]
 }
