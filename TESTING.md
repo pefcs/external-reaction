@@ -1,8 +1,8 @@
 ## v0.10.9-beta.3 — corrected post-damage hook
 
-- [ ] With `activation = damage`, cause a target to take positive HP damage through Midi-QoL; verify only that target is prompted via `midi-qol.damageApplied`.
+- [ ] With `activation = damage`, cause a target to take positive HP or temporary HP damage through Midi-QoL; verify only that target is prompted via `midi-qol.damageApplied`.
 - [ ] Confirm a miss and a hit that causes zero HP damage do not prompt.
-- [ ] Verify damage to multiple targets produces independent prompts only for targets with positive applied HP damage.
+- [ ] Verify damage to multiple targets produces independent prompts only for targets with positive applied HP or temporary HP damage.
 - [ ] Retest Hellish Rebuke Activity return with `actor` and without a suffix; confirm both target flows remain correct.
 
 ## v0.10.9-beta.2 — target damage triggers and explicit Activity targets
@@ -11,7 +11,7 @@ Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and 
 
 - [ ] Set `flags.external-reaction.optional.LHR.activation` to the exact value `damage` on an ItemMacro-backed option. When an incoming attack misses, confirm there is no prompt and no count/reaction is consumed.
 - [ ] Repeat with a hit that applies positive damage. Confirm only the actor that received damage is prompted after damage application.
-- [ ] Test immunity/resistance or a zero-damage target. Confirm no prompt when `damageItem.hpDamage` is zero.
+- [ ] Test immunity/resistance or a zero-damage target. Confirm no prompt when `both `damageItem.hpDamage` and `damageItem.tempDamage` are zero.
 - [ ] Test an AOE against multiple actors. Confirm each actor that actually takes damage is independently checked, and a target taking no damage is skipped.
 - [ ] In the reactor ItemMacro, return `Item.Hellish Rebuke.Activity.Save actor`. Confirm the Activity targets the original damage source/attacker and does not open the module target picker.
 - [ ] Return `Item.Hellish Rebuke.Activity.Save` with no suffix, select the source/attacker in the target picker, and confirm the Activity targets that selected token rather than the reactor.
