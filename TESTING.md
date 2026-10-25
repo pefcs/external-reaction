@@ -1,3 +1,16 @@
+## Local test build — Active Effect compendium
+
+- [ ] Confirm the module exposes **External Reaction — Practical Examples** as a D&D 5e ActiveEffect compendium.
+- [ ] Open several entries and verify their names, descriptions, and change lists survive import.
+- [ ] Drag an immediately usable example onto a test character, then confirm its effect changes and flags appear on the actor.
+- [ ] Test Arcane Aegis / Shieldbearer's Brace against attacks; confirm only matching conditions offer a reaction.
+- [ ] Test Protective Intercession and Agile Escape on failed saves.
+- [ ] Test Trained Reflexes and Expert's Edge with proficient, half-proficient, and expertise skill checks.
+- [ ] Test typed damage examples with Midi-QoL and verify each extra DamageRoll uses the configured damage type.
+- [ ] Test count resources (reaction, bonus action, each-turn, each-round, spell slot, ItemUses) and confirm declined/cancelled prompts do not unexpectedly spend resources.
+- [ ] Confirm the three Template entries are disabled and their descriptions explain the required configuration.
+- [ ] Confirm all example Active Effects can be removed cleanly from the test character.
+
 ## v0.10.9 — release verification
 
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
