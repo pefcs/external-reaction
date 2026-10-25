@@ -3260,33 +3260,30 @@ async function dispatchExternalPreItemRollHook(...hookArgs) {
   }
 }
 
-// Process the per-target hook after Midi-QoL reports a damage application. An
-// unused damage Activity, a missed attack, or zero applied HP damage does not qualify.
-Hooks.on("midi-qol.damaged", async (target, context = {}) => {
+// Midi-QoL's per-target post-application hook. Its second argument is
+// { item, workflow, damageItem }; the event fires after a target's damage is applied.
+Hooks.on("midi-qol.damageApplied", async (target, { item = null, workflow = null, damageItem = null } = {}) => {
   try {
     const targetToken = normalizeToken(target);
-    const workflow = context?.workflow ?? context?.damageItem?.workflow ?? null;
-    const damageItemCandidates = [context?.damageItem, context?.ditem, workflow?.ditem, workflow?.damageItem].filter(Boolean);
-    const damageItem = damageItemCandidates.find(candidate => candidate.hpDamage !== undefined && candidate.hpDamage !== null) ?? null;
     const hpDamage = Number(damageItem?.hpDamage ?? 0);
     if (!workflow || !targetToken?.actor || !(hpDamage > 0)) return;
     const actionActorToken = getWorkflowToken(workflow);
     const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
-    const item = context?.item ?? workflow.item ?? activity?.item ?? null;
+    const damageSourceItem = item ?? workflow.item ?? activity?.item ?? null;
     await dispatchExternalItemMacroStage(workflow, "targetDamageApplied", {
       actionKind: "damage",
       damage: true,
       damageApplication: true,
       damageItem,
-      actionActor: workflow.actor ?? item?.actor ?? actionActorToken?.actor ?? null,
+      actionActor: workflow.actor ?? damageSourceItem?.actor ?? actionActorToken?.actor ?? null,
       actionActorToken,
       actionTargetToken: targetToken,
       targets: [targetToken],
       activity,
-      item
+      item: damageSourceItem
     });
   } catch (err) {
-    error("External Reaction could not process a damaged target; the completed damage application is unaffected.", err);
+    error("External Reaction could not process an applied-damage event; the completed damage application is unaffected.", err);
   }
 });
 
