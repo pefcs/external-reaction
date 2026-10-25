@@ -1,4 +1,4 @@
-import { compilePack } from "@foundryvtt/foundryvtt-cli";
+import { compilePack } from "@foundryvtt/foundryvtt-cli/lib/package.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
