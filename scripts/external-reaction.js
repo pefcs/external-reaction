@@ -3125,7 +3125,8 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
           continue;
         }
         const actionKind = eventFlags.damage ? "damage" : eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse";
-        const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken, {
+        const activationReferenceToken = isDamageApplication ? (actionTargetToken ?? actionActorToken) : actionActorToken;
+        const activationAllowed = await evaluateExternalActivation(reactor, workflow, activationReferenceToken, {
           ...stageContext, actionKind, phase: macroPass, actionType, activity, item, eventFlags,
           actionActorToken, actionActor, actionTargetToken: actionTargetToken ?? actionActorToken
         }, midi);
