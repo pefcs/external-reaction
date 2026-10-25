@@ -9,7 +9,8 @@ External Reaction extends Midi-QoL-style optional reactions so eligible creature
 
 - For ItemMacro options, `flags.external-reaction.optional.NAME.activation = damage` uses Midi-QoL's per-target `midi-qol.isDamaged` event after target-specific damage is calculated but before HP is updated. It only prompts when positive HP or Temporary HP damage is present; an unused damage formula or missed attack does not trigger it.
 - Pass targeted Activity use through Midi-QoL's explicit `midiOptions.targetUuids`, so an `actor` suffix and a target chosen in the module picker target the intended token.
-- Add the exact activation shortcuts `skill.prof` and `skill.exp` to check the original workflow target's proficiency in the skill actually being rolled.
+- Support composable `self`, `skill`, `tool`, `skill.prof` / `skill.exp`, and `tool.prof` / `tool.exp` activation predicates.
+- Add tool-check bonuses using `tool.all`, `tool.{tool}`, and their fail/success phase selectors, alongside ability and skill checks.
 - Trigger reactions from workflow-event activation conditions such as `cast`, `attack`, save/check/skill events, and related activity flags.
 - Invoke an Item Macro at a selected Midi-QoL workflow pass, with structured spell-slot and ItemUses/ActivityUses resource receipts.
 - Execute accepted Item Macros on the reactor's owning client's screen: the owning player's client for a player-owned reactor, or the GM client when the GM owns the reactor or the GM fallback is selected.
