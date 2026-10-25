@@ -1,0 +1,97 @@
+{
+  "_key": "!effects!e000000000000036",
+  "_id": "e000000000000036",
+  "name": "Template — Activity Uses Cost (Configure First)",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.ActivityUseTemplate.check.all",
+        "type": "override",
+        "value": "1d4",
+        "phase": "initial",
+        "_id": "c000000000000351",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ActivityUseTemplate.activation",
+        "type": "override",
+        "value": "target == self",
+        "phase": "initial",
+        "_id": "c000000000000352",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ActivityUseTemplate.count",
+        "type": "override",
+        "value": "ActivityUses.<Item Name>.<Activity Name>",
+        "phase": "initial",
+        "_id": "c000000000000353",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ActivityUseTemplate.displayBonusRolls",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000354",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": false,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": true,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> DISABLED TEMPLATE. Before enabling, replace the count value with ActivityUses.<Item Name>.<Activity Name>, using the exact embedded Item and Activity names on the character receiving this effect. This example is intentionally disabled because Activity names vary between worlds and systems.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. If an option has a count requirement, that resource is spent when the option is accepted, according to External Reaction's count handling.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1792930946961,
+    "modifiedTime": 1792930946961
+  }
+}
