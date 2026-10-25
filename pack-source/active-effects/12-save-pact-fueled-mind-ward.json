@@ -45,16 +45,6 @@
         "conditions": "{}",
         "replacement": "",
         "priority": null
-      },
-      {
-        "key": "flags.external-reaction.optional.PactMindWard.displayBonusRolls",
-        "type": "override",
-        "value": "true",
-        "phase": "initial",
-        "_id": "c000000000000115",
-        "conditions": "{}",
-        "replacement": "",
-        "priority": null
       }
     ],
     "origin": {
