@@ -2,11 +2,13 @@
 
 External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. It also supports triggered D&D 5e Activities and External Reaction Item Macros.
 
-**Test build: 0.10.9-beta.1**  
+**Test build: 0.10.9-beta.2**  
 **Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
 
-## Highlights in 0.10.0–0.10.9-beta.1
+## Highlights in 0.10.0–0.10.9-beta.2
 
+- For ItemMacro options, `flags.external-reaction.optional.NAME.activation = damage` triggers only after Midi-QoL's per-target `midi-qol.damaged` event reports positive HP damage; an unused damage formula or missed attack does not trigger it.
+- Pass targeted Activity use through Midi-QoL's explicit `midiOptions.targetUuids`, so an `actor` suffix and a target chosen in the module picker target the intended token.
 - Trigger reactions from workflow-event activation conditions such as `cast`, `attack`, save/check/skill events, and related activity flags.
 - Invoke an Item Macro at a selected Midi-QoL workflow pass, with structured spell-slot and ItemUses/ActivityUses resource receipts.
 - Execute accepted Item Macros on the reactor's owning client's screen: the owning player's client for a player-owned reactor, or the GM client when the GM owns the reactor or the GM fallback is selected.
