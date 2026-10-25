@@ -1,3 +1,15 @@
+## v0.10.9-beta.2 — target damage triggers and explicit Activity targets
+
+Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib. These cases require live in-world verification.
+
+- [ ] Set `flags.external-reaction.optional.LHR.activation` to the exact value `damage` on an ItemMacro-backed option. When an incoming attack misses, confirm there is no prompt and no count/reaction is consumed.
+- [ ] Repeat with a hit that applies positive damage. Confirm only the actor that received damage is prompted after damage application.
+- [ ] Test immunity/resistance or a zero-damage target. Confirm no prompt when `damageItem.hpDamage` is zero.
+- [ ] Test an AOE against multiple actors. Confirm each actor that actually takes damage is independently checked, and a target taking no damage is skipped.
+- [ ] In the reactor ItemMacro, return `Item.Hellish Rebuke.Activity.Save actor`. Confirm the Activity targets the original damage source/attacker and does not open the module target picker.
+- [ ] Return `Item.Hellish Rebuke.Activity.Save` with no suffix, select the source/attacker in the target picker, and confirm the Activity targets that selected token rather than the reactor.
+- [ ] Verify spell-slot spending, Activity usage, and the damage workflow remain correct after both target paths.
+
 ## v0.10.9-beta.1 — Item Macro Activity returns, target options, and missed-attack damage
 
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL, and socketlib. These cases require in-world verification.
