@@ -26,9 +26,10 @@ Additional regression checks:
 - [ ] Verify a missed attack does not trigger a damage reaction or consume a count/reaction.
 - [ ] Verify hits that result in zero HP and Temporary HP damage do not trigger a damage reaction.
 - [ ] Verify AOE damage checks each target independently and skips targets that take no damage.
-- [ ] Verify a non-skill check cannot pass `skill.prof` or `skill.exp`.
+- [ ] Verify a non-skill check cannot pass `skill.prof` or `skill.exp`, and a non-tool check cannot pass `tool.prof` or `tool.exp`.
+- [ ] Verify `self` is true for the Actor performing its own roll and false for other actors' options, including when a GM initiates the roll.
 - [ ] Verify Check Activities with several associated skills use the workflow's selected skill, and fail closed if the skill cannot be identified.
-- [ ] Verify a missing original target fails closed for `skill.prof` and `skill.exp`.
+- [ ] Verify a missing original target fails closed for `skill.prof` / `skill.exp` and a missing tool identifier or roller fails closed for `tool.prof` / `tool.exp`.
 - [ ] Retest resource consumption, spell-slot spending, and the original damage workflow after a returned Activity is used.
 
 # External Reaction v0.10.8 — Release verification
@@ -180,6 +181,19 @@ For a repeatable Active Effect, test each of these. Use a normal skill roll for 
 - [ ] Apply `activation = friendly` and `activation = enemy`; for a direct ability/skill check, `target` is the checking creature, while `actor` is the triggering workflow actor (usually the same creature for a direct roll).
 - [ ] If a regular D&D skill roll has no DC, confirm normal `skill.*` value still works and that fail/success-specific values do not guess the outcome.
 - [ ] Test one Macro or `function.name` only if you already have a suitable registered example. Otherwise report it as untested rather than a failure.
+
+## 4. Tool-check bonuses
+
+Use a real D&D 5e tool check through the Actor sheet, and repeat with the GM initiating the check for a character. Test with a tool proficiency and, where possible, an Actor with expertise.
+
+- [ ] `tool.all = +1`: any tool check offers the configured bonus.
+- [ ] `tool.thief = +1`: the configured tool ID selects only that tool; a different tool check does not.
+- [ ] `tool.fail.all = 1d4` and `tool.fail.thief = 1d4`: only failed checks with a numeric DC offer the respective bonus.
+- [ ] `tool.success.all = 1d4` and `tool.success.thief = 1d4`: only successful checks with a numeric DC offer the respective bonus.
+- [ ] `activation = tool` is true for tool checks and false for skill/ability checks.
+- [ ] `activation = tool.prof` passes for proficiency/expertise and `tool.exp` only passes for expertise; missing tool identity fails closed.
+- [ ] `activation = self && (skill.prof || tool.prof)`: the option is offered only for the owning Actor's own proficient skill or tool check. Another Actor's check does not prompt this option.
+- [ ] The same self-only behavior works when the GM initiates the tool/skill check; existing third-party skill and ability-check reactions remain unchanged.
 
 ## 4. Damage — Midi-style action type and general values
 
