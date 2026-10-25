@@ -1,0 +1,97 @@
+{
+  "_key": "!effects!e000000000000017",
+  "_id": "e000000000000017",
+  "name": "Skill — Scout's Warning",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.ScoutsWarning.skill.prc",
+        "type": "override",
+        "value": "1d4",
+        "phase": "initial",
+        "_id": "c000000000000161",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ScoutsWarning.activation",
+        "type": "override",
+        "value": "target.disposition == \"friendly\" && CanSee && range <= 30",
+        "phase": "initial",
+        "_id": "c000000000000162",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ScoutsWarning.count",
+        "type": "override",
+        "value": "reaction",
+        "phase": "initial",
+        "_id": "c000000000000163",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ScoutsWarning.displayBonusRolls",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000164",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": false,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": false,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> A scout warns a nearby ally about a clue just before their Perception check is resolved. Adds 1d4 to the ally's Perception check and spends the scout's reaction.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. If an option has a count requirement, that resource is spent when the option is accepted, according to External Reaction's count handling.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1792930864015,
+    "modifiedTime": 1792930864015
+  }
+}
