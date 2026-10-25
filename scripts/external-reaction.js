@@ -3266,7 +3266,8 @@ Hooks.on("midi-qol.damageApplied", async (target, { item = null, workflow = null
   try {
     const targetToken = normalizeToken(target);
     const hpDamage = Number(damageItem?.hpDamage ?? 0);
-    if (!workflow || !targetToken?.actor || !(hpDamage > 0)) return;
+    const tempDamage = Number(damageItem?.tempDamage ?? 0);
+    if (!workflow || !targetToken?.actor || !(hpDamage > 0 || tempDamage > 0)) return;
     const actionActorToken = getWorkflowToken(workflow);
     const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
     const damageSourceItem = item ?? workflow.item ?? activity?.item ?? null;
