@@ -35,16 +35,6 @@
         "conditions": "{}",
         "replacement": "",
         "priority": null
-      },
-      {
-        "key": "flags.external-reaction.optional.ExpertsEdge.displayBonusRolls",
-        "type": "override",
-        "value": "true",
-        "phase": "initial",
-        "_id": "c000000000000184",
-        "conditions": "{}",
-        "replacement": "",
-        "priority": null
       }
     ],
     "origin": {
