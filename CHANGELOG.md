@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.9-beta.2 — target-specific damage triggers and explicit Activity targets
+
+- Treat `flags.external-reaction.optional.NAME.activation = damage` on ItemMacro-based options as a target-taking-damage trigger, routed through Midi-QoL's post-application `midi-qol.damaged` hook. It only prompts the affected actor after damage application reports positive HP damage; misses and unused damage formulas do not qualify.
+- Stop inferring the `damage` event flag merely from an Activity containing a damage formula.
+- Pass selected Activity targets through Midi-QoL's `midiOptions.targetUuids` as well as the scene target UI, preventing the reactor from being substituted as the target.
+- Allow separate target-specific dispatches to proceed independently during multi-target/AOE damage workflows.
 ## 0.10.9-beta.1 — Activity return targets and missed-attack damage guard
 
 - Resolve Item Macro Activity returns by full UUID, explicit Item/Activity name path, compact Item/Activity path, or unique partial names; reject ambiguous matches.
