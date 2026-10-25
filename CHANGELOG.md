@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased — Active Effect examples and Activity return documentation
+## Unreleased — Self-only activation and tool-check support
+
+- Add the bare `self` activation predicate for self-only roll features, while preserving `actor == self` / `target == self` identity comparisons and `self.*` actor data access.
+- Make `skill.prof` / `skill.exp` composable and add `tool`, `tool.prof`, and `tool.exp` activation predicates.
+- Add tool-check bonus selectors: `tool.all`, `tool.{tool}`, `tool.fail.all`, `tool.fail.{tool}`, `tool.success.all`, and `tool.success.{tool}`.
+- Wrap `Actor.rollToolCheck` and extend regression documentation for tool proficiency and self-only checks.
+
+## Active Effect examples and Activity return documentation
 
 - Add the native D&D 5e Active Effect compendium `External Reaction — Practical Examples` with practical attack, AC, saving throw, ability check, skill check, damage, activation, and resource-count examples.
 - Remove most `displayBonusRolls` overrides so examples inherit Midi-QoL's configured behavior; retain one explicit `true` and one explicit `false` example.
