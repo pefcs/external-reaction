@@ -35,16 +35,6 @@
         "conditions": "{}",
         "replacement": "",
         "priority": null
-      },
-      {
-        "key": "flags.external-reaction.optional.ArchersCallout.displayBonusRolls",
-        "type": "override",
-        "value": "true",
-        "phase": "initial",
-        "_id": "c000000000000034",
-        "conditions": "{}",
-        "replacement": "",
-        "priority": null
       }
     ],
     "origin": {
