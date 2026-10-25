@@ -1,12 +1,19 @@
 # Changelog
 
+## 0.10.9-beta.4 — use Midi-QoL's actual per-target damage hook
+
+- Replace the nonexistent `midi-qol.isDamaged` event with `midi-qol.isDamaged`, which Midi-QoL V14 calls for each target with `{ item, workflow, damageItem, ditem }` after target-specific damage calculation and before damage application.
+- Resolve the live damage item from the hook context or workflow and only continue when positive HP damage or Temporary HP damage is present.
+- Evaluate the `damage` activation against the damaged creature as `target`, while keeping the attacker as `actor`.
+- Add debug diagnostics for the received per-target damage hook, including target, source, item, damage amounts, and workflow ID.
+
 ## 0.10.9-beta.3 — correct Midi-QoL damage-applied hook
 
-- Fix the damage activation listener to use Midi-QoL's actual `midi-qol.damageApplied` hook and documented `{ item, workflow, damageItem }` context, replacing the nonexistent `midi-qol.damageApplied` hook.
+- Fix the damage activation listener to use Midi-QoL's actual `midi-qol.isDamaged` hook and documented `{ item, workflow, damageItem }` context, replacing the nonexistent `midi-qol.isDamaged` hook.
 - Require a target and positive `damageItem.hpDamage`, then dispatch the ItemMacro reaction for that exact target.
 ## 0.10.9-beta.2 — target-specific damage triggers and explicit Activity targets
 
-- Treat `flags.external-reaction.optional.NAME.activation = damage` on ItemMacro-based options as a target-taking-damage trigger, routed through Midi-QoL's post-application `midi-qol.damageApplied` hook. It only prompts the affected actor after damage application reports positive HP or temporary HP damage; misses and unused damage formulas do not qualify.
+- Treat `flags.external-reaction.optional.NAME.activation = damage` on ItemMacro-based options as a target-taking-damage trigger, routed through Midi-QoL's post-application `midi-qol.isDamaged` hook. It only prompts the affected actor after damage application reports positive HP or temporary HP damage; misses and unused damage formulas do not qualify.
 - Stop inferring the `damage` event flag merely from an Activity containing a damage formula.
 - Pass selected Activity targets through Midi-QoL's `midiOptions.targetUuids` as well as the scene target UI, preventing the reactor from being substituted as the target.
 - Allow separate target-specific dispatches to proceed independently during multi-target/AOE damage workflows.
