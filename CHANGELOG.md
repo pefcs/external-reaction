@@ -1,5 +1,11 @@
 # Changelog
 
+## Local test build — Active Effect examples (version unchanged)
+
+- Add the native D&D 5e Active Effect compendium `External Reaction — Practical Examples`.
+- Include practical examples for attack, AC, saving throw, ability check, skill check, typed/untyped damage, activation conditions, count resources, roll visibility, and advanced templates.
+- Keep the manifest version unchanged for local testing; this is not a published release.
+
 ## 0.10.9
 
 - Add `skill.prof` and `skill.exp` activation shortcuts. The module identifies the skill being rolled and checks the original workflow target's D&D 5e skill proficiency; proficiency and expertise satisfy `skill.prof`, while only expertise satisfies `skill.exp`.
