@@ -66,6 +66,8 @@ Add an Active Effect change with the Override mode:
 `flags.external-reaction.optional.NAME.activation`
 
 The value is a Midi-QoL activation-condition expression. Empty or missing activation conditions allow the option, preserving previous behavior. Conditions are evaluated separately for the current reaction context before the prompt is displayed.
+**Skill proficiency shortcuts:** the exact values `skill.prof` and `skill.exp` are External Reaction shorthand conditions, not ordinary Midi-QoL expressions. They apply only to skill-check workflows. The module resolves the skill from the live workflow (or from a Check Activity with exactly one associated skill) and checks the original workflow target's `system.skills[skillId].value`: `skill.prof` passes at `1` or `2`, while `skill.exp` passes only at `2`. Half proficiency (`0.5`), an ambiguous/unavailable skill, a missing original target, and non-skill workflows fail closed. These shortcuts do not need the skill name in the condition because the active workflow supplies it. They are intended for ItemMacro-based optional flags.
+
 
 **Special ItemMacro trigger:** when an option uses `activity.trigger = ItemMacro...` and its activation value is exactly `damage` (case-insensitive), External Reaction treats it as a damage-event selector rather than a general expression. It dispatches from Midi-QoL's per-target `midi-qol.isDamaged` hook after target-specific damage calculation and before application and offers the reaction only to the actor whose damage application reports positive HP or temporary HP damage. This overrides that option's configured ItemMacro pass. Missed attacks, unused damage formulas, and targets for which both HP damage and Temporary HP damage are zero must not trigger it. For damage-bonus options that do not use ItemMacro, `damage` remains the workflow event boolean in an activation expression.
 
@@ -96,6 +98,8 @@ Examples (set as the value of `flags.external-reaction.optional.NAME.activation`
 |---|---|
 | `true` | Always allow this optional flag |
 | `false` | Never offer this optional flag |
+| `skill.prof` | Allow only when the original workflow target is proficient or has expertise in the skill being rolled |
+| `skill.exp` | Allow only when the original workflow target has expertise in the skill being rolled |
 | `friendly` | Reactor and action `target` have a friendly disposition relationship |
 | `enemy` | Reactor and action `target` are enemies |
 | `friendly && CanSee` | Target is friendly and reactor can see the target |
