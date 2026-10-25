@@ -2,10 +2,10 @@
 
 External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. It also supports triggered D&D 5e Activities and External Reaction Item Macros.
 
-**Test build: 0.10.9-beta.5**  
+**Current version: 0.10.9**  
 **Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
 
-## Highlights in 0.10.0–0.10.9-beta.5
+## Highlights in 0.10.0–0.10.9
 
 - For ItemMacro options, `flags.external-reaction.optional.NAME.activation = damage` uses Midi-QoL's per-target `midi-qol.isDamaged` event after target-specific damage is calculated but before HP is updated. It only prompts when positive HP or Temporary HP damage is present; an unused damage formula or missed attack does not trigger it.
 - Pass targeted Activity use through Midi-QoL's explicit `midiOptions.targetUuids`, so an `actor` suffix and a target chosen in the module picker target the intended token.
@@ -45,10 +45,12 @@ The repository's GitHub Actions workflow validates the manifest and JavaScript, 
 
 ## Compatibility and testing
 
-The manifest declares Foundry V14 and D&D 5e 6.0.6 as minimum versions. External Reaction integrates with Midi-QoL workflow methods that may change between versions. Test upgrades and new Item Macro passes in a copy of your world before using them in a live campaign. The 0.10.8 reactor-client Counterspell flow has been tested in-world for player-owned and GM-owned reactors, automatic countering when the Counterspell slot level is high enough, and success/failure handling for the ability check when the spell is higher-level.
+The manifest declares Foundry V14 and D&D 5e 6.0.6 as minimum versions. External Reaction integrates with Midi-QoL workflow methods that may change between versions. Test upgrades and new Item Macro passes in a copy of your world before using them in a live campaign. The 0.10.8 reactor-client Counterspell flow has been tested in-world for player-owned and GM-owned reactors, automatic countering when the Counterspell slot level is high enough, and success/failure handling for the ability check when the spell is higher-level. Version 0.10.9 was also tested in-world for damage-triggered reactions, `skill.prof` / `skill.exp` activation conditions, and both explicit and picker-based Activity targeting.
 
-## v0.10.9-beta.1 test changes
+## v0.10.9 changes
 
-- Item Macro Activity returns can use full UUIDs, Item.<item>.Activity.<activity>, Item.<item>.<activity>, or unique partial names. Ambiguous name matches fail closed.
-- Append actor, target, or self to the returned reference to skip External Reaction's custom target picker and target the original initiating actor, original target, or reactor. Example: return "Item.Test Item.Activity.Test Activity actor".
-- Third-party damage.* reactions are skipped when an attack workflow reaches damage preparation with no hit targets. Non-attack damage workflows remain eligible.
+- Add the exact activation values `skill.prof` and `skill.exp` to filter optional reactions based on the original workflow target's proficiency or expertise in the skill being rolled.
+- Handle `activation = damage` for ItemMacro-backed options using Midi-QoL's per-target `midi-qol.isDamaged` event, checking positive HP or Temporary HP damage rather than the existence of a damage formula.
+- Support returned Activity references by UUID, explicit or compact Item/Activity paths, and unique partial names.
+- Add `actor`, `target`, and `self` suffixes for explicit Activity targets, while preserving the normal target selector when no suffix is supplied.
+- Prevent damage reactions for missed attacks and retain eligibility for non-attack damage workflows.
