@@ -5,7 +5,7 @@ External Reaction extends Midi-QoL-style optional reactions so eligible creature
 **Current version: 0.10.9**  
 **Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
 
-## Highlights in 0.10.0–0.10.9
+## Highlights (stable v0.10.0–v0.10.9 and this test build)
 
 - For ItemMacro options, `flags.external-reaction.optional.NAME.activation = damage` uses Midi-QoL's per-target `midi-qol.isDamaged` event after target-specific damage is calculated but before HP is updated. It only prompts when positive HP or Temporary HP damage is present; an unused damage formula or missed attack does not trigger it.
 - Pass targeted Activity use through Midi-QoL's explicit `midiOptions.targetUuids`, so an `actor` suffix and a target chosen in the module picker target the intended token.
