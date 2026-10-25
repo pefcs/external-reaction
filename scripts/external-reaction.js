@@ -1134,7 +1134,8 @@ function evaluateExternalProficiencyActivationPredicate(kind, level, workflow, c
     });
     return false;
   }
-  const rollActor = context?.rollActor ?? getExternalWorkflowTargetActor(workflow, context, referenceToken);
+  const rollActor = context?.rollActor ?? workflow?.rollActor ?? workflow?.checkActor
+    ?? getExternalWorkflowTargetActor(workflow, context, referenceToken);
   if (!rollActor) {
     debug("Proficiency activation predicate rejected because the original " + kind + "-check Actor could not be resolved.", {
       predicate: kind + "." + level, key, workflowId: workflow?.uuid ?? workflow?.id ?? null
@@ -3968,6 +3969,15 @@ function hasExternalToolFlag(flagData) {
   });
 }
 
+
+function usesExternalBareSelfPredicate(expression) {
+  // Exclude explicit Actor-identity comparisons and self data-property access.
+  const candidate = String(expression ?? "")
+    .replace(/\b(actor|target)\s*(?:===|==|!==|!=)\s*self\b/gi, "$1.identitySelf")
+    .replace(/\bself\s*(?:===|==|!==|!=)\s*(actor|target)\b/gi, "identitySelf.$1");
+  return /(?<![\w.])self\b(?!\s*(?:\.|\?\.))/i.test(candidate);
+}
+
 async function getCheckMacroWorkflow(midi, reactor, macroSpec = "") {
   const DummyWorkflow = globalThis.MidiQOL?.Workflows?.DummyWorkflow
     ?? midi?.Workflows?.DummyWorkflow;
@@ -4025,7 +4035,7 @@ async function processExternalCheckPhase({ checkActor, checkToken, ability, curr
       }
       if (!selected || !usedPath) return;
       const activationAllowed = await evaluateExternalActivation(reactor, workflowContext, checkToken, {
-        actionKind: rollKind, phase, ability, roll, dc,
+        actionKind: rollKind, phase, ability, roll, dc, rollActor: checkActor, checkActor,
         actionActorToken: getWorkflowToken(workflowContext) ?? checkToken,
         actionActor: workflowContext?.actor ?? checkActor
       }, midi);
@@ -4106,6 +4116,20 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   const speakerToken = speakerTokenId ? canvas?.tokens?.get?.(speakerTokenId) : null;
   const checkToken = findTokenForActor(checkActor, [speakerToken, checkActor.token]);
   const actorMap = collectSceneActors(checkToken ? [checkToken] : []);
+  // Self-only options belong to the Actor actually making this check, not to a scene
+  // search. Include that Actor even without a scene token, but only when an option
+  // explicitly uses the bare self predicate; ordinary third-party discovery is unchanged.
+  const checkerOptionals = foundry.utils.getProperty(checkActor, FLAG_ROOT) ?? {};
+  const checkerHasSelfCheckOption = Object.values(checkerOptionals).some(flagData => {
+    if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)
+        || !usesExternalBareSelfPredicate(flagData.activation)) return false;
+    return rollKind === "skill" ? hasExternalSkillFlag(flagData)
+      : rollKind === "tool" ? hasExternalToolFlag(flagData) : hasExternalCheckFlag(flagData);
+  });
+  const checkerKey = checkActor.uuid ?? checkActor.id;
+  if (checkerHasSelfCheckOption && checkerKey && !actorMap.has(checkerKey)) {
+    actorMap.set(checkerKey, { actor: checkActor, token: checkToken ?? findTokenForActor(checkActor) });
+  }
   const gm = game.users.find(user => user.active && user.isGM);
   const reactors = new Map();
   for (const { actor, token } of actorMap.values()) {
