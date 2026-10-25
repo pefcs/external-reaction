@@ -1,11 +1,12 @@
 # Changelog
 
-## Local test build — Active Effect examples (version unchanged)
+## Unreleased — Active Effect examples and Activity return documentation
 
-- Add the native D&D 5e Active Effect compendium `External Reaction — Practical Examples`.
-- Include practical examples for attack, AC, saving throw, ability check, skill check, typed/untyped damage, activation conditions, count resources, roll visibility, and advanced templates.
-- Remove `displayBonusRolls` overrides from most examples so they inherit Midi-QoL's configured behavior; retain one explicit `true` and one explicit `false` example.
-- Keep the manifest version unchanged for local testing; this is not a published release.
+- Add the native D&D 5e Active Effect compendium `External Reaction — Practical Examples` with practical attack, AC, saving throw, ability check, skill check, damage, activation, and resource-count examples.
+- Remove most `displayBonusRolls` overrides so examples inherit Midi-QoL's configured behavior; retain one explicit `true` and one explicit `false` example.
+- Remove the direct embedded-Activity `activity.trigger` template. Launch Activities through an External Reaction Item Macro that returns an Activity UUID/reference or a structured Activity result instead.
+- Keep two disabled setup templates: ActivityUses cost configuration and damage-triggered Item Macro configuration.
+- Refresh the reference, flag/value guide, README, and regression checklist to document the supported Item Macro return-value path. Manifest version remains `0.10.9` until a separately approved release.
 
 ## 0.10.9
 
