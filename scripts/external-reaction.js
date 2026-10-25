@@ -9,6 +9,7 @@ const patchedWorkflows = new WeakSet();
 const patchedSaveWorkflows = new WeakSet();
 const processedExternalCheckRolls = new WeakSet();
 const patchedDamageWorkflows = new WeakSet();
+let externalToolCheckHookRegistered = false;
 const processedACWorkflows = new WeakSet();
 // Pending, one-shot contexts that suppress recursive ItemMacro calls when an
 // Activity returned by that same ItemMacro is used as an External Reaction.
@@ -3632,10 +3633,12 @@ Hooks.on("midi-qol.preAttackRoll", async (workflow) => {
     const gm = game.users.find(u => u.active && u.isGM);
     const reactorMap = new Map();
     for (const actor of actorMap.values()) {
-      if (actor.uuid === workflow.actor?.uuid) continue;
       const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
       for (const [flagKey, data] of Object.entries(optional)) {
         if (!data || typeof data !== "object") continue;
+        // The initiator remains excluded from third-party attack reactions, but a
+        // bare self predicate explicitly opts its owner into their own roll.
+        if (actor.uuid === workflow.actor?.uuid && !usesExternalBareSelfPredicate(data.activation)) continue;
         const usesCharacterReaction = data.count === "reaction" || data.countAlt === "reaction";
         const user = midi.playerForActor(actor);
         const recipient = user?.active ? user : gm;
@@ -4089,7 +4092,7 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   const dialog = args?.[1] ?? {};
   const messageData = args?.[2] ?? {};
   const toolCandidate = config?.tool ?? config?.toolId ?? config?.toolKey ?? config?.midiOptions?.tool
-    ?? roll.options?.midiChosenId ?? roll.options?.tool ?? roll.options?.toolId;
+    ?? roll.options?.externalReactionToolId ?? roll.options?.midiChosenId ?? roll.options?.tool ?? roll.options?.toolId;
   const rollToolKey = rollKind === "tool" ? getExternalToolKeyFromValue(toolCandidate, checkActor) : null;
   const ability = String(rollKind === "skill"
     ? (config?.skill ?? config?.skillId ?? config?.rollSkills?.[0] ?? config?.midiOptions?.skill ?? roll.options?.midiChosenId ?? roll.options?.skill ?? roll.options?.skillId ?? "")
@@ -4186,6 +4189,51 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   return roll;
 }
 
+function installExternalToolCheckIdentifierHook() {
+  if (externalToolCheckHookRegistered || !globalThis.Hooks?.on) return;
+  globalThis.Hooks.on("dnd5e.rollToolCheck", (...args) => {
+    const actor = args.find(value => value?.system?.tools && value?.uuid) ?? null;
+    let toolKey = null;
+    // D&D 5e 6.x publishes the tool ID through the post-roll hook's data object.
+    // Accept the older positional (actor, roll, toolId) form as well.
+    for (const value of [...args].reverse()) {
+      if (typeof value === "string") {
+        toolKey = getExternalToolKeyFromValue(value, actor);
+      } else if (value && typeof value === "object") {
+        toolKey = getExternalToolKeyFromValue(
+          value.tool ?? value.toolId ?? value.toolKey ?? value.data?.tool ?? value.data?.toolId,
+          actor
+        );
+      }
+      if (toolKey) break;
+    }
+    if (!toolKey) return;
+
+    const rolls = [];
+    const collectRolls = value => {
+      if (!value) return;
+      if (value instanceof Roll) {
+        rolls.push(value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const entry of value) collectRolls(entry);
+        return;
+      }
+      if (typeof value === "object") {
+        if (value.rolls) collectRolls(value.rolls);
+        if (value.roll) collectRolls(value.roll);
+      }
+    };
+    for (const argument of args) collectRolls(argument);
+    for (const roll of new Set(rolls)) {
+      roll.options ??= {};
+      roll.options.externalReactionToolId = toolKey;
+    }
+  });
+  externalToolCheckHookRegistered = true;
+}
+
 function installAbilityCheckIntegration() {
   const prototype = CONFIG.Actor?.documentClass?.prototype;
   if (!prototype) {
@@ -4215,6 +4263,7 @@ function installAbilityCheckIntegration() {
     installed = true;
     log(`Installed external ${rollKind} integration on ${methodName}`);
   }
+  installExternalToolCheckIdentifierHook();
   return installed;
 }
 
@@ -4770,10 +4819,12 @@ async function collectExternalDamageReactors(workflow, midi) {
   // explicit action target in activation expressions.
   const referenceToken = actionActorToken;
   for (const { actor, token } of actorMap.values()) {
-    if (actor.uuid === workflow?.actor?.uuid) continue;
     const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
     for (const [flagKey, flagData] of Object.entries(optional)) {
       if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)) continue;
+      // Do not turn this into a general self-reaction: only a bare self predicate
+      // opts the action initiator into its own damage-bonus processing.
+      if (actor.uuid === workflow?.actor?.uuid && !usesExternalBareSelfPredicate(flagData.activation)) continue;
       const selector = getExternalDamageSelector(flagData, actionType);
       if (!selector) continue;
       if (!countAvailable(actor, flagData, flagKey)) continue;
