@@ -7,7 +7,7 @@ const source = path.resolve("pack-source/active-effects");
 const destination = path.resolve("packs/examples");
 if (!fs.existsSync(source)) throw new Error("Active Effect source directory was not found.");
 const sourceFiles = fs.readdirSync(source).filter(name => name.endsWith(".json")).sort();
-if (sourceFiles.length !== 38) throw new Error(`Expected 38 Active Effect examples, found ${sourceFiles.length}`);
+if (sourceFiles.length !== 37) throw new Error(`Expected 37 Active Effect examples, found ${sourceFiles.length}`);
 let disabledTemplates = 0;
 const ids = new Set();
 const displayOverrides = [];
@@ -36,7 +36,7 @@ if (displayOverrides.length !== expectedDisplayOverrides.size ||
     displayOverrides.some(entry => expectedDisplayOverrides.get(entry.name) !== entry.value)) {
   throw new Error("Only Arcane Aegis (true) and Private Oracle's Insight (false) should explicitly override displayBonusRolls: " + JSON.stringify(displayOverrides));
 }
-if (disabledTemplates !== 3) throw new Error(`Expected 3 disabled setup templates, found ${disabledTemplates}`);
+if (disabledTemplates !== 2) throw new Error(`Expected 2 disabled setup templates, found ${disabledTemplates}`);
 const manifest = JSON.parse(fs.readFileSync("module.json", "utf8"));
 if (manifest.version !== "0.10.9") throw new Error("Version unexpectedly changed: " + manifest.version);
 if (!manifest.packs?.some(pack => pack.name === "examples" && pack.type === "ActiveEffect" && pack.path === "packs/examples")) {
@@ -53,13 +53,13 @@ if (process.argv.includes("--verify")) {
   try {
     const keys = await db.keys().all();
     const effectKeys = keys.filter(key => key.startsWith("!effects!"));
-    if (effectKeys.length !== 38) throw new Error(`Expected 38 packed Active Effects, found ${effectKeys.length}`);
+    if (effectKeys.length !== 37) throw new Error(`Expected 37 packed Active Effects, found ${effectKeys.length}`);
     const packed = await db.getMany(effectKeys);
     if (packed.some(data => data?.type !== "base" || !Array.isArray(data.system?.changes))) {
       throw new Error("Packed Active Effect entry failed structure verification.");
     }
     const packedDisabled = packed.filter(data => data.disabled).length;
-    if (packedDisabled !== 3) throw new Error(`Expected 3 disabled setup templates in pack, found ${packedDisabled}`);
+    if (packedDisabled !== 2) throw new Error(`Expected 2 disabled setup templates in pack, found ${packedDisabled}`);
     const packedDisplayOverrides = packed.flatMap(data => (data.system?.changes ?? [])
       .filter(change => change.key.endsWith(".displayBonusRolls"))
       .map(change => ({ name: data.name, value: String(change.value) })));
