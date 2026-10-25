@@ -888,6 +888,7 @@ function getExternalWorkflowTargetActor(workflow, context = {}, referenceToken =
 
   addCandidates(context?.skillTargetToken);
   addCandidates(context?.originalTargetToken);
+  addCandidates(context?.originalWorkflowTargetToken);
   // Prefer target collections directly on the original workflow. Do not substitute the
   // initiator just because the dispatcher had to fall back to its token for other conditions.
   addCandidates(workflow?.targets);
@@ -906,11 +907,14 @@ function getExternalWorkflowTargetActor(workflow, context = {}, referenceToken =
   const actionActorToken = normalizeToken(context?.actionActorToken) ?? getWorkflowToken(workflow);
   const actionActorUuid = actionActorToken?.actor?.uuid ?? actionActorToken?.document?.actor?.uuid
     ?? context?.actionActor?.uuid ?? workflow?.actor?.uuid ?? null;
+  const allowSkillReferenceTarget = context?.requireOriginalWorkflowTarget !== true
+    && String(context?.actionKind ?? "").toLowerCase() === "skill";
   for (const candidate of [context?.actionTargetToken, referenceToken]) {
     const token = normalizeToken(candidate);
     const candidateActor = token?.actor ?? token?.document?.actor
       ?? (candidate?.system?.skills ? candidate : null);
-    if (candidateActor && candidateActor.uuid !== actionActorUuid) candidates.push(candidate);
+    if (candidateActor && (candidateActor.uuid !== actionActorUuid
+        || (allowSkillReferenceTarget && candidate === referenceToken))) candidates.push(candidate);
   }
 
   for (const candidate of candidates) {
@@ -3285,7 +3289,10 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
         const activationReferenceToken = isDamageApplication ? (actionTargetToken ?? actionActorToken) : actionActorToken;
         const activationAllowed = await evaluateExternalActivation(reactor, workflow, activationReferenceToken, {
           ...stageContext, actionKind, phase: macroPass, actionType, activity, item, eventFlags,
-          actionActorToken, actionActor, actionTargetToken: actionTargetToken ?? actionActorToken
+          actionActorToken, actionActor,
+          actionTargetToken: actionTargetToken ?? actionActorToken,
+          originalWorkflowTargetToken: actionTargetToken,
+          requireOriginalWorkflowTarget: true
         }, midi);
         if (!activationAllowed || !countAvailable(actor, flagData, flagKey)) continue;
         if (reactor.usesCharacterReaction && midi.hasUsedReaction?.(actor)) continue;
