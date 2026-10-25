@@ -55,16 +55,6 @@
         "conditions": "{}",
         "replacement": "",
         "priority": null
-      },
-      {
-        "key": "flags.external-reaction.optional.ArcaneOvercharge.displayBonusRolls",
-        "type": "override",
-        "value": "true",
-        "phase": "initial",
-        "_id": "c000000000000266",
-        "conditions": "{}",
-        "replacement": "",
-        "priority": null
       }
     ],
     "origin": {
