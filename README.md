@@ -19,7 +19,7 @@ External Reaction extends Midi-QoL-style optional reactions so eligible creature
 
 ## Example Active Effects Compendium
 
-The **External Reaction — Practical Examples** compendium includes ready-to-use D&D 5e Active Effects for realistic combat, saving throws, checks, skill proficiency, damage bonuses, activation conditions, and resource costs. Most examples can be dragged directly onto an actor; three clearly labeled templates are disabled until their character-specific Activity or Item Macro details are configured.
+The **External Reaction — Practical Examples** compendium includes ready-to-use D&D 5e Active Effects for realistic combat, saving throws, checks, skill proficiency, damage bonuses, activation conditions, and resource costs. Most examples can be dragged directly onto an actor; three clearly labeled templates are disabled until their character-specific Activity or Item Macro details are configured. Most examples leave `displayBonusRolls` unset so Midi-QoL's own setting is respected, with two entries retained to demonstrate explicit overrides.
 
 See [Active Effect Examples](docs/ACTIVE-EFFECT-EXAMPLES.md) for the entry list, setup notes, and coverage.
 
