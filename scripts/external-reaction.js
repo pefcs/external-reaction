@@ -991,7 +991,7 @@ function getExternalWorkflowTargetActor(workflow, context = {}, referenceToken =
   for (const candidate of [context?.actionTargetToken, referenceToken]) {
     const token = normalizeToken(candidate);
     const candidateActor = token?.actor ?? token?.document?.actor
-      ?? (candidate?.system?.skills ? candidate : null);
+      ?? (candidate?.system?.skills || candidate?.system?.tools ? candidate : null);
     if (candidateActor && (candidateActor.uuid !== actionActorUuid
         || (allowCheckReferenceTarget && candidate === referenceToken))) candidates.push(candidate);
   }
@@ -1163,7 +1163,7 @@ function normalizeExternalActivationPredicates(expression, workflow, context = {
 function normalizeBareSelfActivationPredicate(expression) {
   // Bare self is a boolean predicate; preserve property forms such as self.item.has(...)
   // and identity comparisons such as actor == self (normalized separately).
-  return String(expression ?? "").replace(/(?<![\w.])self\b(?!\s*\.)/gi, "isSelf");
+  return String(expression ?? "").replace(/(?<![\w.])self\b(?!\s*(?:\.|\?\.))/gi, "isSelf");
 }
 
 async function evaluateExternalActivation(reactor, workflow, referenceToken, context = {}, midi = game.modules.get("midi-qol")?.api) {
