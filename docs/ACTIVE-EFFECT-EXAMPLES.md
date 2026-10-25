@@ -1,0 +1,26 @@
+# External Reaction — Active Effect Examples
+
+This pack targets Foundry VTT V14 and D&D 5e 6.0.6, with External Reaction, Midi-QoL, and socketlib enabled.
+
+## Use the pack
+
+1. Open **Compendium Packs → External Reaction — Practical Examples**.
+2. Inspect an entry's description before dragging it onto a test actor.
+3. Drag a ready-to-use Active Effect onto the actor who should own the External Reaction option.
+4. Test the effect in a disposable world and remove it from the actor when finished.
+
+The entries use D&D 5e's Active Effect document structure and Override mode for External Reaction configuration flags. Each entry uses its own optional group name so that adding multiple examples to one actor does not overwrite an unrelated group.
+
+## Coverage
+
+The pack includes AC reactions; attack-roll bonuses including miss-only selectors and rerolls; saving-throw, ability-check, and skill-check bonuses; the `skill.prof` and `skill.exp` activation shortcuts; typed and untyped damage bonuses; critical-damage handling; activation filters based on disposition, range, visibility, hit points, target identity, proficiency, and embedded item possession; count resources using reactions, bonus actions, turn/round limits, spell slots, and ItemUses; roll-mode and bonus-card display controls; and disabled templates for ActivityUses, character-specific Activity references, and the special damage-triggered Item Macro path.
+
+## Important notes
+
+- A count of `reaction`, `bonusAction`, or `spellslot X` is a resource rule. The module spends the relevant resource according to its normal acceptance/counting behavior.
+- Item-dependent examples use exact embedded Item names such as `Shield`, `Spellbook`, `Disguise Kit`, and `Wand of Magic Missiles`. Rename the reference or item if your actor uses a different name.
+- The `ItemUses.Wand of Magic Missiles` example requires that exact item and an available uses pool.
+- The success-phase reroll example changes an already-successful attack; use it only where a higher/lower result can matter under your rules or feature design.
+- The three entries beginning with **Template** are disabled intentionally. They cannot be considered plug-and-play until the specific embedded Activity or Item Macro is configured.
+- Activation conditions use the actual workflow context: `target` is the action recipient, `actor` the initiating actor, and `self` the actor owning the option. Range predicates require available tokens and use Midi-QoL's measurement behavior.
+- These are practical configuration examples, not rules text from a D&D book. Test them in a disposable world before using them in your live campaign.
