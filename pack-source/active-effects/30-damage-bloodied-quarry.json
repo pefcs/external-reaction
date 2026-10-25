@@ -1,0 +1,107 @@
+{
+  "_key": "!effects!e000000000000030",
+  "_id": "e000000000000030",
+  "name": "Damage — Bloodied Quarry",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.BloodiedQuarry.damage.necrotic.all",
+        "type": "override",
+        "value": "1d6",
+        "phase": "initial",
+        "_id": "c000000000000291",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.BloodiedQuarry.activation",
+        "type": "override",
+        "value": "actor.disposition == \"friendly\" && target.disposition == \"hostile\" && target.hp.value <= target.hp.max / 2 && CanSee",
+        "phase": "initial",
+        "_id": "c000000000000292",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.BloodiedQuarry.count",
+        "type": "override",
+        "value": "each-round",
+        "phase": "initial",
+        "_id": "c000000000000293",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.BloodiedQuarry.criticalDamage",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000294",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.BloodiedQuarry.displayBonusRolls",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000295",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": false,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": false,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> A hunter exploits an already-wounded enemy, adding 1d6 Necrotic damage to a friendly ally's damage roll when the target is at or below half HP. The option can be used once per round.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. If an option has a count requirement, that resource is spent when the option is accepted, according to External Reaction's count handling.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1792930930415,
+    "modifiedTime": 1792930930415
+  }
+}
