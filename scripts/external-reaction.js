@@ -3260,13 +3260,26 @@ async function dispatchExternalPreItemRollHook(...hookArgs) {
   }
 }
 
-// Midi-QoL's per-target post-application hook. Its second argument is
-// { item, workflow, damageItem }; the event fires after a target's damage is applied.
-Hooks.on("midi-qol.damageApplied", async (target, { item = null, workflow = null, damageItem = null } = {}) => {
+// Midi-QoL V14 invokes isDamaged per target from callDamageHooksAndMacros,
+// after calculating the target-specific damage and before applying it. The hook's
+// context is { item, workflow, damageItem, ditem }; there is no damageApplied hook
+// in the active V14 workflow implementation.
+Hooks.on("midi-qol.isDamaged", async (target, context = {}) => {
   try {
     const targetToken = normalizeToken(target);
+    const workflow = context?.workflow ?? context?.w ?? null;
+    const item = context?.item ?? workflow?.item ?? workflow?.activity?.item ?? null;
+    const damageItem = context?.damageItem ?? context?.ditem ?? workflow?.damageItem ?? workflow?.ditem ?? null;
     const hpDamage = Number(damageItem?.hpDamage ?? 0);
     const tempDamage = Number(damageItem?.tempDamage ?? 0);
+    debug("Received Midi-QoL isDamaged hook for External Reaction.", {
+      target: targetToken?.actor?.name ?? targetToken?.name,
+      source: workflow?.actor?.name ?? item?.actor?.name,
+      item: item?.name,
+      hpDamage,
+      tempDamage,
+      workflowId: workflow?.id ?? workflow?.uuid ?? null
+    });
     if (!workflow || !targetToken?.actor || !(hpDamage > 0 || tempDamage > 0)) return;
     const actionActorToken = getWorkflowToken(workflow);
     const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
@@ -3284,7 +3297,7 @@ Hooks.on("midi-qol.damageApplied", async (target, { item = null, workflow = null
       item: damageSourceItem
     });
   } catch (err) {
-    error("External Reaction could not process an applied-damage event; the completed damage application is unaffected.", err);
+    error("External Reaction could not process a Midi-QoL isDamaged event; the pending damage application is unaffected.", err);
   }
 });
 
