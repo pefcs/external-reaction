@@ -11,7 +11,7 @@ Core reaction functionality includes:
 - Saving throw values: `save.all`, `save.{ability}`, `save.fail.*`, and `save.success.*`.
 - Ability-check values: `check.all`, `check.{ability}`, `check.fail.*`, and `check.success.*` when a numeric DC is available.
 - Skill values: `skill.all`, `skill.{skill}`, `skill.fail.all`, `skill.fail.{skill}`, and `skill.success.all` / `skill.success.{skill}` when a numeric DC is available.
-- Tool values: `tool.all`, `tool.{tool}`, `tool.fail.all`, `tool.fail.{tool}`, `tool.success.all`, and `tool.success.{tool}` when a numeric DC is available.
+- Tool values: `tool.all` and `tool.{tool}` work without a DC; `tool.fail.all`, `tool.fail.{tool}`, `tool.success.all`, and `tool.success.{tool}` require a numeric DC.
 - Damage bonuses: `damage.{actionType}` or `damage.all` following Midi-QoL-style priority, plus typed damage selectors `damage.{damageType}.all` and `damage.{damageType}.{attackType}` to add a separate typed damage roll.
 - AC bonuses: `ac` on the attacked/receiving actor, applied before Midi-QoL adjudicates attack hits; it does not automatically spend a reaction unless `count` / `countAlt` explicitly requests `reaction`.
 - Optional roll controls: `criticalDamage`, `displayBonusRolls`, and `rollMode` are honored for the relevant bonus workflow.
@@ -92,7 +92,7 @@ Supported operators and syntax follow Midi-QoL's evaluator: `!`, `&&`, `||`, `==
 
 Activation-condition context:
 
-- `self` is the reactor: the actor that owns the External Reaction flag.
+- `self` property paths refer to the reactor (the Actor owning the External Reaction flag). Bare `self` in an activation expression is instead the self-only predicate: it is true when this Actor is the one performing the relevant roll.
 - `actor` is the triggering action's initiator: the attacker for attack workflows, or the actor/item user (such as the caster) for a save workflow. For a direct check/skill roll, this is usually the checker too.
 - `target` is the action recipient: the defended creature for attack/AC reactions, the creature rolling a save/check/skill, or the affected creature for damage bonuses. For damage, the current workflow's first available affected target is used.
 - Root roll data (`abilities`, `attributes`, `traits`, and similar system data) remains reactor-oriented for compatibility. `source` and `reactor` refer to the reactor's actor data/document; `reactorToken` is its scene token. `item`, `activity`, `workflow` / `w` refer to the triggering action when available.
