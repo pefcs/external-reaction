@@ -1,33 +1,12 @@
 # Changelog
 
-## 0.10.9-beta.5 — skill proficiency activation shorthands
+## 0.10.9
 
-- Add exact activation values `skill.prof` and `skill.exp` for External Reaction optional flags. They require a skill-check workflow, identify the skill from the active workflow/Check Activity, and inspect the original workflow target's D&D 5e skill proficiency value.
-- `skill.prof` passes for proficiency or expertise (skill value ≥ 1); `skill.exp` passes only for expertise (skill value ≥ 2). Half-proficiency (0.5), an unidentified skill, a missing target, or a non-skill workflow fails closed.
-- Recognize D&D 5e 6.x Check Activity `check.associated` skill associations when determining the skill event.
-
-## 0.10.9-beta.4 — use Midi-QoL's actual per-target damage hook
-
-- Replace the non-firing `midi-qol.damageApplied` listener with Midi-QoL V14's per-target `midi-qol.isDamaged` hook, which supplies `{ item, workflow, damageItem, ditem }` after target-specific damage calculation and before damage application.
-- Resolve the live damage item from the hook context or workflow and only continue when positive HP damage or Temporary HP damage is present.
-- Evaluate the `damage` activation against the damaged creature as `target`, while keeping the attacker as `actor`.
-- Add debug diagnostics for the received per-target damage hook, including target, source, item, damage amounts, and workflow ID.
-
-## 0.10.9-beta.3 — correct Midi-QoL damage-applied hook
-
-- Attempt to listen for `midi-qol.damageApplied` with `{ item, workflow, damageItem }`; this hook did not fire in the tested V14 workflow, and was replaced in beta.4 by `midi-qol.isDamaged`.
-## 0.10.9-beta.2 — target-specific damage triggers and explicit Activity targets
-
-- Treat `flags.external-reaction.optional.NAME.activation = damage` on ItemMacro-based options as a target-taking-damage trigger, routed through the then-intended `midi-qol.damaged` hook. That hook name did not fire in the tested V14 workflow; beta.4 replaces it with `midi-qol.isDamaged`.
-- Stop inferring the `damage` event flag merely from an Activity containing a damage formula.
-- Pass selected Activity targets through Midi-QoL's `midiOptions.targetUuids` as well as the scene target UI, preventing the reactor from being substituted as the target.
-- Allow separate target-specific dispatches to proceed independently during multi-target/AOE damage workflows.
-## 0.10.9-beta.1 — Activity return targets and missed-attack damage guard
-
-- Resolve Item Macro Activity returns by full UUID, explicit Item/Activity name path, compact Item/Activity path, or unique partial names; reject ambiguous matches.
-- Support optional Activity return suffixes actor, target, and self to bypass External Reaction's custom target selector and preselect the original initiating actor, original target, or reactor. Structured Activity results can use target or targetMode.
-- Skip External Reaction damage bonus prompts when an attack workflow has no hit targets, while keeping saving-throw-based and other non-attack damage reactions available.
-- Add regression tests and reference documentation. This is a beta build for in-world validation before stable promotion.
+- Add `skill.prof` and `skill.exp` activation shortcuts. The module identifies the skill being rolled and checks the original workflow target's D&D 5e skill proficiency; proficiency and expertise satisfy `skill.prof`, while only expertise satisfies `skill.exp`.
+- Fix damage-triggered ItemMacro reactions to use Midi-QoL's per-target `midi-qol.isDamaged` hook. Require positive HP or Temporary HP damage, and evaluate the condition with the damaged creature as `target` and the attacker as `actor`.
+- Support Activity return references by UUID, explicit Item/Activity paths, compact Item/Activity paths, and unique partial names. Append `actor`, `target`, or `self` to direct the returned Activity; without a suffix, keep the normal target selector.
+- Prevent reactions for missed attacks and preserve non-attack damage reaction behavior.
+- Verified in Foundry by the maintainer/tester: damage-triggered reactions, `skill.prof` / `skill.exp` activation conditions, and Activity targeting both with the `actor` suffix and with normal target selection.
 
 Notable changes for each release are recorded here. GitHub Actions validates and packages releases when the manifest version changes on `main`.
 
