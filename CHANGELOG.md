@@ -2,7 +2,7 @@
 
 ## 0.10.9-beta.5 — skill proficiency activation shorthands
 
-- Add exact activation values `skill.prof` and `skill.exp` for ItemMacro-based optional reactions. They require a skill-check workflow, identify the skill from the active workflow/Check Activity, and inspect the original workflow target's D&D 5e skill proficiency value.
+- Add exact activation values `skill.prof` and `skill.exp` for External Reaction optional flags. They require a skill-check workflow, identify the skill from the active workflow/Check Activity, and inspect the original workflow target's D&D 5e skill proficiency value.
 - `skill.prof` passes for proficiency or expertise (skill value ≥ 1); `skill.exp` passes only for expertise (skill value ≥ 2). Half-proficiency (0.5), an unidentified skill, a missing target, or a non-skill workflow fails closed.
 - Recognize D&D 5e 6.x Check Activity `check.associated` skill associations when determining the skill event.
 
