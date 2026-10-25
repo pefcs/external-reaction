@@ -1,3 +1,4 @@
+import { compilePack } from "@foundryvtt/foundryvtt-cli";
 import fs from "node:fs";
 import path from "node:path";
 import { ClassicLevel } from "classic-level";
@@ -51,6 +52,9 @@ if (process.argv.includes("--verify")) {
   } finally {
     await db.close();
   }
-} else {
+} else if (process.argv.includes("--validate-only")) {
   console.log(`Validated ${sourceFiles.length} source Active Effects (${disabledTemplates} disabled templates); module version remains ${manifest.version}.`);
+} else {
+  await compilePack(source, destination, { log: true });
+  console.log(`Compiled ${sourceFiles.length} Active Effect examples to ${destination}; manifest version remains ${manifest.version}.`);
 }
