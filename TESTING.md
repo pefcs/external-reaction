@@ -1,3 +1,20 @@
+## v0.11.0 — release verification
+
+Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib. Keep these cases unchecked until each is verified in-world.
+
+- [ ] Confirm the installable release ZIP includes `packs/examples` and all three user-facing docs in `docs/`.
+- [ ] Confirm the compiled **External Reaction — Practical Examples** compendium has 39 Active Effects, including both new Tool entries.
+- [ ] Drag **Tool — Artisan's Precision** onto an Actor; the Actor's own proficient tool checks offer +1d4, at most once per turn. Other Actors' checks must not prompt this self-only option.
+- [ ] Confirm `activation = self` is true only when the option-owning Actor performs the relevant roll; `actor == self`, `target == self`, and `self.*` item/data access retain their previous meanings.
+- [ ] Confirm `activation = tool` is true for tool checks, but false for skill and ability checks.
+- [ ] Confirm `tool.all` applies to tool checks without a DC, and `tool.{tool}` wins over the matching `.all` fallback when the tool ID is available.
+- [ ] Confirm `tool.fail.all` / `tool.fail.{tool}` are offered only for an initially failed check with a numeric DC, and that the modified roll can be adjudicated again.
+- [ ] Confirm `tool.success.all` / `tool.success.{tool}` are offered only for a successful check with a numeric DC.
+- [ ] Confirm `tool.prof` passes for proficiency/expertise, `tool.exp` only passes for expertise, and missing/ambiguous tool or roller data fails closed.
+- [ ] Confirm `skill.prof` / `skill.exp` remain composable with `self` and still work only for skill checks. Test `self && (skill.prof || tool.prof)`.
+- [ ] Repeat tool and self-only tests when the GM initiates a character's roll. Existing third-party attack, save, ability-check, skill-check, damage, and AC reactions must remain unchanged.
+- [ ] Confirm `tool.fail.*` / `tool.success.*` do not appear when the workflow has no numeric DC.
+
 ## Local test build — Active Effect compendium
 
 - [ ] Confirm the module exposes **External Reaction — Practical Examples** as a D&D 5e ActiveEffect compendium.
@@ -26,9 +43,10 @@ Additional regression checks:
 - [ ] Verify a missed attack does not trigger a damage reaction or consume a count/reaction.
 - [ ] Verify hits that result in zero HP and Temporary HP damage do not trigger a damage reaction.
 - [ ] Verify AOE damage checks each target independently and skips targets that take no damage.
-- [ ] Verify a non-skill check cannot pass `skill.prof` or `skill.exp`.
+- [ ] Verify a non-skill check cannot pass `skill.prof` or `skill.exp`, and a non-tool check cannot pass `tool.prof` or `tool.exp`.
+- [ ] Verify `self` is true for the Actor performing its own roll and false for other actors' options, including when a GM initiates the roll.
 - [ ] Verify Check Activities with several associated skills use the workflow's selected skill, and fail closed if the skill cannot be identified.
-- [ ] Verify a missing original target fails closed for `skill.prof` and `skill.exp`.
+- [ ] Verify a missing original target fails closed for `skill.prof` / `skill.exp` and a missing tool identifier or roller fails closed for `tool.prof` / `tool.exp`.
 - [ ] Retest resource consumption, spell-slot spending, and the original damage workflow after a returned Activity is used.
 
 # External Reaction v0.10.8 — Release verification
@@ -162,6 +180,9 @@ Use **Midi-QoL → Debug** in the world settings. Open the browser console and t
 - [ ] **Save normal / fail / success:** `save.all = +5`, `save.fail.all = reroll`, `save.success.all = +1d4`; outcome and final roll card match.
 - [ ] **Ability checks:** `check.all = +5` works. With a numeric DC, fail/success phases are evaluated as expected.
 - [ ] **Activation:** `friendly`, `enemy`, `CanSee`, `range <= 40`, `self.item.has("Shield")`, and `target.item.has("Counterspell")` still behave as tested in v0.7.2.
+- [ ] Bare `self` on an attack bonus permits the owning Actor's own attack, but does not change eligibility for other actors' reactions.
+- [ ] Bare `self` on a damage bonus permits the owning Actor's own damage workflow, while missed-attack damage remains blocked and third-party behavior is unchanged.
+- [ ] Bare `self` on save/check/skill/tool options only admits the Actor making that roll, including when the GM initiates it; `actor == self` and `target == self` keep their existing identity-comparison meanings.
 - [ ] **Count:** repeat a small count format from the previously confirmed suite (`numeric`, `each-turn`, `each-round`, or `every`) and confirm availability/consumption.
 - [ ] **Dialog:** long, short, and default button labels render vertically and remain readable.
 
@@ -181,7 +202,20 @@ For a repeatable Active Effect, test each of these. Use a normal skill roll for 
 - [ ] If a regular D&D skill roll has no DC, confirm normal `skill.*` value still works and that fail/success-specific values do not guess the outcome.
 - [ ] Test one Macro or `function.name` only if you already have a suitable registered example. Otherwise report it as untested rather than a failure.
 
-## 4. Damage — Midi-style action type and general values
+## 4. Tool-check bonuses
+
+Use a real D&D 5e tool check through the Actor sheet, and repeat with the GM initiating the check for a character. Test with a tool proficiency and, where possible, an Actor with expertise.
+
+- [ ] `tool.all = +1`: any tool check offers the configured bonus.
+- [ ] `tool.thief = +1`: the configured tool ID selects only that tool; a different tool check does not.
+- [ ] `tool.fail.all = 1d4` and `tool.fail.thief = 1d4`: only failed checks with a numeric DC offer the respective bonus.
+- [ ] `tool.success.all = 1d4` and `tool.success.thief = 1d4`: only successful checks with a numeric DC offer the respective bonus.
+- [ ] `activation = tool` is true for tool checks and false for skill/ability checks.
+- [ ] `activation = tool.prof` passes for proficiency/expertise and `tool.exp` only passes for expertise; missing tool identity fails closed.
+- [ ] `activation = self && (skill.prof || tool.prof)`: the option is offered only for the owning Actor's own proficient skill or tool check. Another Actor's check does not prompt this option.
+- [ ] The same self-only behavior works when the GM initiates the tool/skill check; existing third-party skill and ability-check reactions remain unchanged.
+
+## 5. Damage — Midi-style action type and general values
 
 These values go on a reactor that should be prompted when a separate actor's damage roll occurs. For formula tests, use repeatable counts.
 
@@ -197,7 +231,7 @@ These values go on a reactor that should be prompted when a separate actor's dam
 
 **Selector priority:** within one `NAME` flag group, the module selects the typed action-specific path first (e.g. `damage.fire.mwak`), then the general action-specific path (`damage.mwak`), then the typed `.all` path (`damage.fire.all`), then the general `damage.all`, and finally a legacy primitive typed path such as `damage.fire`. Use separate option names/effects to offer multiple independent bonus options.
 
-## 5. Damage — typed damage values
+## 6. Damage — typed damage values
 
 The typed paths add a separate DamageRoll whose `options.type` is set to the selected damage type. Start with a simple formula (`1d6`), not a reroll command.
 
@@ -251,7 +285,7 @@ Try these activations on a third-party AC reactor:
 - [ ] `target.item.has("Shield")` checks the defender's owned Items; `actor.item.has("Weapon")` checks the attacker's owned Items.
 - [ ] `range <= 40 && CanSee` measures and checks visibility to the defended target.
 
-## 6. AC bonus selectors (v0.8.5)
+## 7. AC bonus selectors (v0.8.5)
 
 AC bonuses are flags on the **attacked/receiving actor**, not the attacker. They are processed during the attack workflow before Midi finalizes hit/miss adjudication. AC bonuses do not automatically consume the target's reaction unless `count` / `countAlt` explicitly specifies `reaction`.
 
@@ -294,7 +328,7 @@ Use one temporary Active Effect on a third-party Reactor (or directly on the tar
 - [ ] `.hit` selectors must use the effective AC captured before External Reaction applies any AC increases. An earlier AC bonus must not make a normally-missing hit selector eligible, or vice versa.
 - [ ] With no `count`, accepting consumes the granting effect according to the module's normal one-use behavior without automatically consuming reaction. With `count = reaction`, confirm Midi's reaction state prevents a second use.
 
-## 7. `criticalDamage`
+## 8. `criticalDamage`
 
 This is a property of the optional flag, not a bonus value. Set it to boolean `true` or `false` in Override mode. Midi-QoL's behavior is mimicked when External Reaction constructs a bonus DamageRoll by setting `configured = false` when the property is true.
 
@@ -303,7 +337,7 @@ This is a property of the optional flag, not a bonus value. Set it to boolean `t
 - [ ] Test both weapon and spell damage if possible.
 - [ ] Confirm this property doesn't change save or check rolls.
 
-## 8. `displayBonusRolls`
+## 9. `displayBonusRolls`
 
 - [ ] `displayBonusRolls = true`: accepting a bonus creates a before/after roll card.
 - [ ] `displayBonusRolls = false`: accepting the bonus does not create the extra before/after card, but the modified roll still drives the workflow.
@@ -313,7 +347,7 @@ This is a property of the optional flag, not a bonus value. Set it to boolean `t
 - [ ] Per-option `displayBonusRolls = true/false` overrides the global Midi setting.
 - [ ] Confirm the final native workflow roll/card still contains the modified total even when the before/after card is disabled.
 
-## 9. `rollMode`
+## 10. `rollMode`
 
 For this set, use a GM and at least one player who owns the reactor actor. A previously seen public message cannot be made unseen retroactively; test privacy in a fresh test message.
 
@@ -324,14 +358,14 @@ For this set, use a GM and at least one player who owns the reactor actor. A pre
 - [ ] Omit `rollMode`: follows Midi-QoL's `core.messageMode` behavior and uses the core roll-mode setting where applicable.
 - [ ] For save/check rolls, inspect both the original standalone roll card and the final Midi workflow summary. Record any case where message visibility or the content differs from the desired Midi behavior.
 
-## 10. Activation condition interaction
+## 11. Activation condition interaction
 
 - [ ] Combine skill with `activation = friendly && CanSee`.
 - [ ] Combine damage with `activation = enemy && range <= 40`.
 - [ ] Combine AC with `activation = friendly && target.item.has("Shield")` (for AC, `target` is the defended creature; use `actor.item.has("Weapon")` to check the attacker's owned item).
 - [ ] Missing token/disposition data must use the agreed Friendly fallback for relationship checks. A missing token required by `range` still causes a condition referencing `range` to be rejected.
 
-## 11. Results and diagnostics
+## 12. Results and diagnostics
 
 For each failed test, record:
 

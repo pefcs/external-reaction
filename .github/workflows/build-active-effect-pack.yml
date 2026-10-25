@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/active-effect-example-compendium
+      - feature/self-tool-checks
       - main
     paths:
       - 'module.json'

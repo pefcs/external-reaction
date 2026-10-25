@@ -13,7 +13,12 @@ The entries use D&D 5e's Active Effect document structure and Override mode for 
 
 ## Coverage
 
-The pack includes AC reactions; attack-roll bonuses including miss-only selectors and rerolls; saving-throw, ability-check, and skill-check bonuses; the `skill.prof` and `skill.exp` activation shortcuts; typed and untyped damage bonuses; critical-damage handling; activation filters based on disposition, range, visibility, hit points, target identity, proficiency, and embedded item possession; count resources using reactions, bonus actions, turn/round limits, spell slots, and ItemUses; roll-mode and bonus-card display controls; and disabled templates for ActivityUses and the special damage-triggered Item Macro path. An Item Macro can launch an embedded Activity by returning its UUID/reference or a supported structured Activity result.
+The pack includes AC reactions; attack-roll bonuses including miss-only selectors and rerolls; saving-throw, ability-check, skill-check, and tool-check bonuses; the `skill.prof` / `skill.exp` and `tool.prof` / `tool.exp` activation shortcuts; the bare `self` predicate for self-only options; typed and untyped damage bonuses; critical-damage handling; activation filters based on disposition, range, visibility, hit points, target identity, proficiency, and embedded item possession; count resources using reactions, bonus actions, turn/round limits, spell slots, and ItemUses; roll-mode and bonus-card display controls; and disabled templates for ActivityUses and the special damage-triggered Item Macro path. An Item Macro can launch an embedded Activity by returning its UUID/reference or a supported structured Activity result.
+
+## Tool-check examples added in v0.11.0
+
+- **Tool — Artisan's Precision:** Adds 1d4 to the option owner's own tool check when the Actor has proficiency or expertise in that tool. The `each-turn` count limits use to once per turn.
+- **Tool — Locksmith's Gambit:** Demonstrates Thieves' Tools fail/success selectors. A numeric DC must be available for the outcome-specific options; replace the example tool identifier if your system uses a different ID.
 
 ## Important notes
 

@@ -1,12 +1,14 @@
 # Changelog
 
-## Unreleased — Active Effect examples and Activity return documentation
+## 0.11.0 — Self-only activation and tool-check support
 
-- Add the native D&D 5e Active Effect compendium `External Reaction — Practical Examples` with practical attack, AC, saving throw, ability check, skill check, damage, activation, and resource-count examples.
-- Remove most `displayBonusRolls` overrides so examples inherit Midi-QoL's configured behavior; retain one explicit `true` and one explicit `false` example.
-- Remove the direct embedded-Activity `activity.trigger` template. Launch Activities through an External Reaction Item Macro that returns an Activity UUID/reference or a structured Activity result instead.
-- Keep two disabled setup templates: ActivityUses cost configuration and damage-triggered Item Macro configuration.
-- Refresh the reference, flag/value guide, README, and regression checklist to document the supported Item Macro return-value path. Manifest version remains `0.10.9` until a separately approved release.
+- Add the bare `self` activation predicate for self-only roll features while preserving `actor == self` / `target == self` identity comparisons and `self.*` actor data access.
+- Make `skill.prof` / `skill.exp` composable and add the `tool`, `tool.prof`, and `tool.exp` activation predicates.
+- Add all six tool-check bonus selectors: `tool.all`, `tool.{tool}`, `tool.fail.all`, `tool.fail.{tool}`, `tool.success.all`, and `tool.success.{tool}`; wrap `Actor.rollToolCheck` so standard D&D 5e tool checks are intercepted.
+- Add **Tool — Artisan's Precision** and **Tool — Locksmith's Gambit** to the native Active Effect examples, covering self-only proficiency and DC-based fail/success tool selectors.
+- Include the compiled `External Reaction — Practical Examples` Active Effect compendium and all example/reference documentation in the installable release ZIP.
+- Keep the existing Activity return-value workflow and 37 existing examples; this release adds two tool-check examples, bringing the compendium to 39 entries.
+- Expand regression documentation for tool proficiency, self-only checks, and release-pack verification.
 
 ## 0.10.9
 

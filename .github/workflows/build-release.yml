@@ -13,6 +13,8 @@ on:
       - "CHANGELOG.md"
       - "CONTRIBUTING.md"
       - "tools/**"
+      - "pack-source/**"
+      - ".github/workflows/build-active-effect-pack.yml"
       - ".github/workflows/build-release.yml"
   workflow_dispatch:
 
@@ -35,10 +37,19 @@ jobs:
         with:
           node-version: 24
 
-      - name: Validate manifest and JavaScript
+      - name: Install Foundry pack compiler
+        run: npm install --no-save github:foundryvtt/foundryvtt-cli#main
+
+      - name: Validate manifest, JavaScript, and example source
         run: |
           node --check scripts/external-reaction.js
           node tools/validate-module.mjs
+          node tools/build-active-effect-pack.mjs --validate-only
+
+      - name: Build and verify native Active Effect compendium
+        run: |
+          node tools/build-active-effect-pack.mjs
+          node tools/build-active-effect-pack.mjs --verify
 
       - name: Determine whether the manifest version changed
         id: release
@@ -79,7 +90,8 @@ jobs:
 
           cp module.json README.md TESTING.md CHANGELOG.md dist/external-reaction/
           cp scripts/external-reaction.js dist/external-reaction/scripts/
-          cp docs/REFERENCE.md dist/external-reaction/docs/
+          cp -a docs/. dist/external-reaction/docs/
+          cp -a packs dist/external-reaction/packs
 
           cd dist
           zip -qr module.zip external-reaction

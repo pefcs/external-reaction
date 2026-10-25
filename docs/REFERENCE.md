@@ -10,7 +10,8 @@ Core reaction functionality includes:
 - Attack values: `attack.all` and `attack.{attackType}` before hit adjudication; miss-only `attack.fail.*`; hit-only `attack.success.*` for `mwak`, `rwak`, `msak`, and `rsak`.
 - Saving throw values: `save.all`, `save.{ability}`, `save.fail.*`, and `save.success.*`.
 - Ability-check values: `check.all`, `check.{ability}`, `check.fail.*`, and `check.success.*` when a numeric DC is available.
-- Skill values: `skill.all`, `skill.{skill}`, `skill.fail.all`, `skill.fail.{skill}`, and External Reaction's `skill.success.all` / `skill.success.{skill}` when a numeric DC is available.
+- Skill values: `skill.all`, `skill.{skill}`, `skill.fail.all`, `skill.fail.{skill}`, and `skill.success.all` / `skill.success.{skill}` when a numeric DC is available.
+- Tool values: `tool.all` and `tool.{tool}` work without a DC; `tool.fail.all`, `tool.fail.{tool}`, `tool.success.all`, and `tool.success.{tool}` require a numeric DC.
 - Damage bonuses: `damage.{actionType}` or `damage.all` following Midi-QoL-style priority, plus typed damage selectors `damage.{damageType}.all` and `damage.{damageType}.{attackType}` to add a separate typed damage roll.
 - AC bonuses: `ac` on the attacked/receiving actor, applied before Midi-QoL adjudicates attack hits; it does not automatically spend a reaction unless `count` / `countAlt` explicitly requests `reaction`.
 - Optional roll controls: `criticalDamage`, `displayBonusRolls`, and `rollMode` are honored for the relevant bonus workflow.
@@ -34,6 +35,19 @@ Use the same Active Effect flag namespace and syntax as ability checks, with the
 - `flags.external-reaction.optional.NAME.skill.success.{skill}`
 
 The supported D&D 5e skill IDs are `acr`, `ani`, `arc`, `ath`, `dec`, `his`, `ins`, `inv`, `itm`, `med`, `nat`, `prc`, `per`, `prf`, `rel`, `slt`, `ste`, and `sur`. Fail/success-specific bonuses require a numeric DC to be available to the wrapper. Ordinary D&D 5e skill rolls often have no DC attached; in that case the normal `skill.*` modifier still works but fail/success phases cannot be inferred automatically.
+
+### Tool-check bonuses
+
+Tool checks use the same phased selector model as skill checks:
+
+- `flags.external-reaction.optional.NAME.tool.all`
+- `flags.external-reaction.optional.NAME.tool.{tool}`
+- `flags.external-reaction.optional.NAME.tool.fail.all`
+- `flags.external-reaction.optional.NAME.tool.fail.{tool}`
+- `flags.external-reaction.optional.NAME.tool.success.all`
+- `flags.external-reaction.optional.NAME.tool.success.{tool}`
+
+Use the tool identifier configured in the installed D&D 5e system, not the displayed tool name. The tool-specific selector is checked before its phase's `.all` fallback. Fail/success selectors require an available numeric DC, just like the matching skill selectors; ordinary `tool.*` modifiers still work without one.
 
 ### Damage bonuses
 
@@ -66,7 +80,10 @@ Add an Active Effect change with the Override mode:
 `flags.external-reaction.optional.NAME.activation`
 
 The value is a Midi-QoL activation-condition expression. Empty or missing activation conditions allow the option, preserving previous behavior. Conditions are evaluated separately for the current reaction context before the prompt is displayed.
-**Skill proficiency shortcuts:** the exact values `skill.prof` and `skill.exp` are External Reaction shorthand conditions, not ordinary Midi-QoL expressions. They apply only to skill-check workflows. The module resolves the skill from the live workflow (or from a Check Activity with exactly one associated skill) and checks the original workflow target's `system.skills[skillId].value`: `skill.prof` passes at `1` or `2`, while `skill.exp` passes only at `2`. Half proficiency (`0.5`), an ambiguous/unavailable skill, a missing original target, and non-skill workflows fail closed. These shortcuts do not need the skill name in the condition because the active workflow supplies it. They can be used wherever External Reaction evaluates an optional flag’s activation condition.
+
+**Self-only predicate:** bare `self` is an External Reaction boolean predicate. It is true only when the Actor owning the option is the Actor performing the relevant roll: the save/check/skill/tool roller for those rolls, and the initiating Actor for attack/damage-style workflows. It can be combined with any other activation conditions, for example `self && (skill.prof || tool.prof)`. Actor data remains available through property expressions such as `self.item.has("Shield")`; only bare `self` is interpreted as the predicate.
+
+**Proficiency predicates:** `skill.prof`, `skill.exp`, `tool.prof`, and `tool.exp` are External Reaction predicates that can be used alone or inside a compound condition. `skill.prof` checks the original skill roller's `system.skills[skillId].value`; `tool.prof` checks the tool check's `system.tools[toolId].value`. Proficiency passes at `1` or `2`; expertise passes only at `2`. Half proficiency (`0.5`), an ambiguous/unavailable skill/tool, an unknown roller, or using a proficiency predicate during the wrong kind of check fails closed. The active workflow must identify the skill/tool, except that a Check Activity with exactly one associated skill or tool may supply it. These predicates may be composed with `self`, e.g. `self && skill.prof` or `self && (skill.prof || tool.prof)` for a self-only feature such as Psi-Bolstered Knack.
 
 
 **Special ItemMacro trigger:** when an option uses `activity.trigger = ItemMacro...` and its activation value is exactly `damage` (case-insensitive), External Reaction treats it as a damage-event selector rather than a general expression. It dispatches from Midi-QoL's per-target `midi-qol.isDamaged` hook after target-specific damage calculation and before application and offers the reaction only to the actor whose damage application reports positive HP or temporary HP damage. This overrides that option's configured ItemMacro pass. Missed attacks, unused damage formulas, and targets for which both HP damage and Temporary HP damage are zero must not trigger it. For damage-bonus options that do not use ItemMacro, `damage` remains the workflow event boolean in an activation expression.
@@ -75,7 +92,7 @@ Supported operators and syntax follow Midi-QoL's evaluator: `!`, `&&`, `||`, `==
 
 Activation-condition context:
 
-- `self` is the reactor: the actor that owns the External Reaction flag.
+- `self` property paths refer to the reactor (the Actor owning the External Reaction flag). Bare `self` in an activation expression is instead the self-only predicate: it is true when this Actor is the one performing the relevant roll.
 - `actor` is the triggering action's initiator: the attacker for attack workflows, or the actor/item user (such as the caster) for a save workflow. For a direct check/skill roll, this is usually the checker too.
 - `target` is the action recipient: the defended creature for attack/AC reactions, the creature rolling a save/check/skill, or the affected creature for damage bonuses. For damage, the current workflow's first available affected target is used.
 - Root roll data (`abilities`, `attributes`, `traits`, and similar system data) remains reactor-oriented for compatibility. `source` and `reactor` refer to the reactor's actor data/document; `reactorToken` is its scene token. `item`, `activity`, `workflow` / `w` refer to the triggering action when available.
@@ -98,8 +115,13 @@ Examples (set as the value of `flags.external-reaction.optional.NAME.activation`
 |---|---|
 | `true` | Always allow this optional flag |
 | `false` | Never offer this optional flag |
-| `skill.prof` | Allow only when the original workflow target is proficient or has expertise in the skill being rolled |
-| `skill.exp` | Allow only when the original workflow target has expertise in the skill being rolled |
+| `self` | Allow only when the Actor owning the option is the Actor making the relevant roll |
+| `skill` | The current workflow is a skill check |
+| `skill.prof` | Allow when the Actor making the current skill check is proficient or has expertise in that skill |
+| `skill.exp` | Allow when the Actor making the current skill check has expertise in that skill |
+| `tool` | The current workflow is a tool check |
+| `tool.prof` | Allow when the Actor making the current tool check is proficient or has expertise with that tool |
+| `tool.exp` | Allow when the Actor making the current tool check has expertise with that tool |
 | `friendly` | Reactor and action `target` have a friendly disposition relationship |
 | `enemy` | Reactor and action `target` are enemies |
 | `friendly && CanSee` | Target is friendly and reactor can see the target |
@@ -136,8 +158,9 @@ Examples (set as the value of `flags.external-reaction.optional.NAME.activation`
 
 External Reaction supports direct comparisons between the activation-context actor references: `actor == self`, `target == self`, and their inverse forms. Because these names refer to separate roll-data wrappers rather than the original Actor documents, the module normalizes comparisons to Actor UUIDs before Midi-QoL evaluates them. Because identity is Actor-UUID based, a second token linked to the same Actor document is still treated as the same Actor for `actor == self` / `target == self` checks; an initiating Actor is not allowed to react to its own outgoing attack, damage, or AC workflow. For `target`, it compares `target.actorUuid` (the Actor UUID), not `target.uuid` (which identifies the token in this context).
 
-- `actor == self` — the initiator is the reactor's same Actor.
+- `actor == self` — the initiating Actor is the reactor's same Actor.
 - `target == self` — the action target is the reactor's same Actor.
+- Bare `self` is different: it is a self-only predicate that checks whether the option owner is the Actor performing the relevant roll. It can be composed with `skill.prof`, `tool.prof`, and other conditions.
 - `actor != self` / `target != self` — the corresponding Actors differ.
 - `!actor == self` / `!target == self` — External Reaction convenience shorthand for identity inequality, just like the earlier negated-disposition shorthand. Standard forms `actor != self` and `!(actor == self)` are clearer and recommended.
 

@@ -9,6 +9,7 @@ const patchedWorkflows = new WeakSet();
 const patchedSaveWorkflows = new WeakSet();
 const processedExternalCheckRolls = new WeakSet();
 const patchedDamageWorkflows = new WeakSet();
+let externalToolCheckHookRegistered = false;
 const processedACWorkflows = new WeakSet();
 // Pending, one-shot contexts that suppress recursive ItemMacro calls when an
 // Activity returned by that same ItemMacro is used as an External Reaction.
@@ -873,6 +874,85 @@ function getExternalWorkflowSkillKey(workflow, context = {}) {
   return null;
 }
 
+function getExternalConfiguredToolIds(actor = null) {
+  const ids = new Set();
+  const addSource = source => {
+    if (!source) return;
+    if (source instanceof Map) {
+      for (const [key, value] of source.entries()) {
+        if (typeof key === "string" && key.trim()) ids.add(key.trim().toLowerCase());
+        if (value && typeof value === "object") {
+          for (const field of ["id", "key", "toolId", "identifier", "slug"]) {
+            if (typeof value[field] === "string" && value[field].trim()) ids.add(value[field].trim().toLowerCase());
+          }
+        } else if (typeof value === "string" && /^[a-z][a-z0-9_-]*$/i.test(value.trim())) {
+          ids.add(value.trim().toLowerCase());
+        }
+      }
+      return;
+    }
+    if (Array.isArray(source)) {
+      for (const value of source) {
+        if (typeof value === "string" && value.trim()) ids.add(value.trim().toLowerCase());
+        else if (value && typeof value === "object") {
+          for (const field of ["id", "key", "toolId", "identifier", "slug"]) {
+            if (typeof value[field] === "string" && value[field].trim()) ids.add(value[field].trim().toLowerCase());
+          }
+        }
+      }
+      return;
+    }
+    if (typeof source !== "object") return;
+    for (const [key, value] of Object.entries(source)) {
+      if (key && !/^\d+$/.test(key)) ids.add(key.trim().toLowerCase());
+      if (value && typeof value === "object") {
+        for (const field of ["id", "key", "toolId", "identifier", "slug"]) {
+          if (typeof value[field] === "string" && value[field].trim()) ids.add(value[field].trim().toLowerCase());
+        }
+      }
+    }
+  };
+  addSource(CONFIG?.DND5E?.tools);
+  addSource(CONFIG?.DND5E?.toolIds);
+  addSource(actor?.system?.tools);
+  return ids;
+}
+
+function getExternalToolKeyFromValue(value, actor = null) {
+  if (typeof value === "string") {
+    const key = value.trim().toLowerCase();
+    return getExternalConfiguredToolIds(actor).has(key) ? key : null;
+  }
+  if (!value || typeof value !== "object") return null;
+  for (const field of ["tool", "toolId", "toolKey", "toolType", "key", "id", "identifier", "slug"]) {
+    const key = getExternalToolKeyFromValue(value[field], actor);
+    if (key) return key;
+  }
+  return null;
+}
+
+function getExternalWorkflowToolKey(workflow, context = {}) {
+  const activity = context?.activity ?? workflow?.activity ?? null;
+  const actor = context?.rollActor ?? context?.checkActor ?? context?.actionActor
+    ?? context?.actionTargetToken?.actor ?? workflow?.actor ?? null;
+  const candidates = [
+    context?.toolKey, context?.toolId, context?.tool,
+    context?.check?.tool, context?.check?.toolId,
+    workflow?.tool, workflow?.toolId, workflow?.toolKey,
+    workflow?.options?.tool, workflow?.options?.toolId,
+    workflow?.rollOptions?.tool, workflow?.rollOptions?.toolId,
+    workflow?.rollData?.tool, workflow?.rollData?.toolId,
+    workflow?.checkRoll?.options?.tool, workflow?.checkRoll?.options?.toolId,
+    activity?.check?.tool, activity?.check?.toolId,
+    ...getExternalCheckAssociatedValues({ check: { associated: activity?.check?.tools ?? activity?.check?.tool ?? activity?.check?.associated ?? [] } })
+  ];
+  for (const candidate of candidates) {
+    const key = getExternalToolKeyFromValue(candidate, actor);
+    if (key) return key;
+  }
+  return null;
+}
+
 function getExternalWorkflowTargetActor(workflow, context = {}, referenceToken = null) {
   const candidates = [];
   const addCandidates = value => {
@@ -907,21 +987,21 @@ function getExternalWorkflowTargetActor(workflow, context = {}, referenceToken =
   const actionActorToken = normalizeToken(context?.actionActorToken) ?? getWorkflowToken(workflow);
   const actionActorUuid = actionActorToken?.actor?.uuid ?? actionActorToken?.document?.actor?.uuid
     ?? context?.actionActor?.uuid ?? workflow?.actor?.uuid ?? null;
-  const allowSkillReferenceTarget = context?.requireOriginalWorkflowTarget !== true
-    && String(context?.actionKind ?? "").toLowerCase() === "skill";
+  const allowCheckReferenceTarget = context?.requireOriginalWorkflowTarget !== true
+    && ["skill", "tool", "check"].includes(String(context?.actionKind ?? "").toLowerCase());
   for (const candidate of [context?.actionTargetToken, referenceToken]) {
     const token = normalizeToken(candidate);
     const candidateActor = token?.actor ?? token?.document?.actor
-      ?? (candidate?.system?.skills ? candidate : null);
+      ?? (candidate?.system?.skills || candidate?.system?.tools ? candidate : null);
     if (candidateActor && (candidateActor.uuid !== actionActorUuid
-        || (allowSkillReferenceTarget && candidate === referenceToken))) candidates.push(candidate);
+        || (allowCheckReferenceTarget && candidate === referenceToken))) candidates.push(candidate);
   }
 
   for (const candidate of candidates) {
     const token = normalizeToken(candidate);
     const actor = token?.actor ?? token?.document?.actor
       ?? (candidate?.system?.skills ? candidate : null);
-    if (actor?.system?.skills) return actor;
+    if (actor?.system?.skills || actor?.system?.tools) return actor;
   }
   return null;
 }
@@ -936,7 +1016,7 @@ function getExternalWorkflowEventFlags(workflow, context = {}) {
   const isAttack = actionKind === "attack" || activityType === "attack" || attackTypes.has(actionType);
   const isCast = context.cast === true || actionKind === "cast" || item?.type === "spell" || activityType === "cast";
   const isSave = context.save === true || actionKind === "save" || activityType === "save" || actionType === "save";
-  const isCheck = context.check === true || actionKind === "check" || actionKind === "skill" || activityType === "check" || actionType === "check";
+  const isCheck = context.check === true || ["check", "skill", "tool"].includes(actionKind) || activityType === "check" || actionType === "check";
   const associatedValues = getExternalCheckAssociatedValues(activity);
   const hasSkillAssociation = associatedValues.some(value => !!getExternalSkillKeyFromValue(value));
   const isSkill = context.skill === true || actionKind === "skill" || hasSkillAssociation
@@ -951,7 +1031,12 @@ function getExternalWorkflowEventFlags(workflow, context = {}) {
   const isConcentration = context.concentration === true || actionKind === "concentration";
   const isDeathSave = context.deathSave === true || actionKind === "deathSave" || actionKind === "deathsave";
   const isInitiative = context.initiative === true || actionKind === "initiative";
-  const isTool = context.tool === true || (isCheck && Boolean(activity?.check?.tools?.length || workflow?.tool));
+  const toolKey = getExternalWorkflowToolKey(workflow, context);
+  const toolAssociated = getExternalCheckAssociatedValues({
+    check: { associated: activity?.check?.tools ?? activity?.check?.tool ?? [] }
+  }).length > 0;
+  const isTool = context.toolCheck === true || context.tool === true || actionKind === "tool"
+    || (isCheck && Boolean(toolAssociated || workflow?.tool || toolKey));
   const isUtility = context.utility === true || activityType === "utility" || actionType === "util";
   const isItemUse = context.itemUse === true || actionKind === "itemUse";
   const inferred = {
@@ -1024,49 +1109,63 @@ function isExternalItemMacroTrigger(flagData) {
   return rawTrigger.split(",")[0]?.trim().toLowerCase() === "itemmacro";
 }
 
-function evaluateExternalSkillActivationShortcut(rawExpression, workflow, context = {}, referenceToken = null) {
-  const condition = typeof rawExpression === "string" ? rawExpression.trim().toLowerCase() : "";
-  if (condition !== "skill.prof" && condition !== "skill.exp") return null;
 
+function evaluateExternalProficiencyActivationPredicate(kind, level, workflow, context = {}, referenceToken = null) {
+  const actionKind = String(context?.actionKind ?? context?.rollType ?? "").toLowerCase();
   const activity = context?.activity ?? workflow?.activity ?? null;
-  const item = context?.item ?? workflow?.item ?? activity?.item ?? null;
-  const actionType = context?.actionType ?? activity?.actionType ?? activity?.system?.actionType ?? item?.system?.actionType;
-  const eventFlags = getExternalWorkflowEventFlags(workflow, { ...context, actionType, activity, item });
-  const skillKey = getExternalWorkflowSkillKey(workflow, context);
   const activityType = String(activity?.type ?? activity?.system?.type ?? "").toLowerCase();
-  const actionKind = String(context?.actionKind ?? "").toLowerCase();
-  const isSkillCheck = actionKind === "skill" || context?.skill === true || context?.skillCheck === true
-    || eventFlags.skill || (activityType === "check" && !!skillKey);
-  if (!isSkillCheck) {
-    debug("Skill proficiency activation shorthand rejected because the workflow is not a skill check.", {
-      condition, actionKind, activityType, skillKey
+  const isSkill = kind === "skill";
+  const key = isSkill
+    ? getExternalWorkflowSkillKey(workflow, context)
+    : getExternalWorkflowToolKey(workflow, context);
+  const eventFlags = getExternalWorkflowEventFlags(workflow, context);
+  const isRelevantCheck = isSkill
+    ? actionKind === "skill" || context?.skillCheck === true || eventFlags.skill || (activityType === "check" && !!key)
+    : actionKind === "tool" || context?.toolCheck === true || context?.tool === true
+      || eventFlags.tool || (activityType === "check" && !!key);
+  if (!isRelevantCheck) {
+    debug("Proficiency activation predicate rejected because workflow is not a " + kind + " check.", {
+      predicate: kind + "." + level, actionKind, activityType, key
     });
     return false;
   }
-  if (!skillKey) {
-    debug("Skill proficiency activation shorthand rejected because the workflow skill could not be identified.", {
-      condition, actionKind, activityType, workflowSkill: workflow?.skill, checkSkill: workflow?.check?.skill,
-      associatedSkills: getExternalCheckAssociatedValues(activity)
+  if (!key) {
+    debug("Proficiency activation predicate rejected because the " + kind + " could not be identified.", {
+      predicate: kind + "." + level, actionKind, activityType
     });
     return false;
   }
-
-  const targetActor = getExternalWorkflowTargetActor(workflow, context, referenceToken);
-  if (!targetActor) {
-    debug("Skill proficiency activation shorthand rejected because the original workflow target could not be resolved.", {
-      condition, skill: skillKey, workflowId: workflow?.uuid ?? workflow?.id ?? null
+  const rollActor = context?.rollActor ?? workflow?.rollActor ?? workflow?.checkActor
+    ?? getExternalWorkflowTargetActor(workflow, context, referenceToken);
+  if (!rollActor) {
+    debug("Proficiency activation predicate rejected because the original " + kind + "-check Actor could not be resolved.", {
+      predicate: kind + "." + level, key, workflowId: workflow?.uuid ?? workflow?.id ?? null
     });
     return false;
   }
-
-  // D&D 5e 6.x skill proficiency values are 0 (none), 0.5 (half proficiency),
-  // 1 (proficiency), and 2 (expertise). Expertise also satisfies skill.prof.
-  const skillValue = Number(targetActor.system?.skills?.[skillKey]?.value ?? 0);
-  const allowed = Number.isFinite(skillValue) && (condition === "skill.prof" ? skillValue >= 1 : skillValue >= 2);
-  debug("Evaluated skill proficiency activation shorthand.", {
-    condition, target: targetActor.name, skill: skillKey, proficiencyValue: skillValue, allowed
+  const source = isSkill ? rollActor.system?.skills : rollActor.system?.tools;
+  const proficiency = Number(source?.[key]?.value ?? 0);
+  // D&D 5e uses 0 (none), 0.5 (half proficiency), 1 (proficiency), and 2 (expertise).
+  const allowed = Number.isFinite(proficiency) && (level === "prof" ? proficiency >= 1 : proficiency >= 2);
+  debug("Evaluated " + kind + " proficiency activation predicate.", {
+    predicate: kind + "." + level, actor: rollActor.name, key, proficiency, allowed
   });
   return allowed;
+}
+
+function normalizeExternalActivationPredicates(expression, workflow, context = {}, referenceToken = null) {
+  return String(expression ?? "").replace(/\b(skill|tool)\.(prof|exp)\b/gi, (_match, kind, level) => {
+    const allowed = evaluateExternalProficiencyActivationPredicate(
+      kind.toLowerCase(), level.toLowerCase(), workflow, context, referenceToken
+    );
+    return allowed ? "true" : "false";
+  });
+}
+
+function normalizeBareSelfActivationPredicate(expression) {
+  // Bare self is a boolean predicate; preserve property forms such as self.item.has(...)
+  // and identity comparisons such as actor == self (normalized separately).
+  return String(expression ?? "").replace(/(?<![\w.])self\b(?!\s*(?:\.|\?\.))/gi, "isSelf");
 }
 
 async function evaluateExternalActivation(reactor, workflow, referenceToken, context = {}, midi = game.modules.get("midi-qol")?.api) {
@@ -1075,16 +1174,17 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
   if (rawExpression === true) return true;
   if (rawExpression === false) return false;
   if (typeof rawExpression === "string" && rawExpression.trim() === "") return true;
-  const skillProficiencyActivation = evaluateExternalSkillActivationShortcut(rawExpression, workflow, context, referenceToken);
-  if (skillProficiencyActivation !== null) return skillProficiencyActivation;
-  // Normalize the user-friendly negated-comparison shorthand before calling Midi's
-  // evaluator, while leaving the standard JavaScript expression grammar intact.
+  // Resolve External Reaction-specific predicates into booleans while keeping them composable.
   const expression = typeof rawExpression === "string"
-    ? normalizeActorIdentityComparisons(
-        normalizeNegatedDispositionComparisons(rawExpression)
-          // Allow bare `canSee` as a readable alias for the boolean visibility value.
-          // Preserve Midi-QoL's `canSee(token, target)` helper calls.
-          .replace(/\bcanSee\b(?!\s*\()/g, "CanSee")
+    ? normalizeBareSelfActivationPredicate(
+        normalizeActorIdentityComparisons(
+          normalizeNegatedDispositionComparisons(
+            normalizeExternalActivationPredicates(rawExpression, workflow, context, referenceToken)
+          )
+            // Allow bare canSee as a readable alias for the boolean visibility value.
+            // Preserve Midi-QoL's canSee(token, target) helper calls.
+            .replace(/\bcanSee\b(?!\s*\()/g, "CanSee")
+        )
       )
     : rawExpression;
   if (!midi?.createConditionData || !midi?.evalCondition) {
@@ -1318,6 +1418,12 @@ async function evaluateExternalActivation(reactor, workflow, referenceToken, con
   if (conditionData.actor && typeof conditionData.actor === "object") {
     conditionData.actor.isCombatTurn = game.combat?.combatant?.tokenId === (actionActorToken?.id ?? actionActorToken?.document?.id);
   }
+  const actionKind = String(context?.actionKind ?? "").toLowerCase();
+  // Check/save rollers are represented by the action target; attack/damage rollers are the initiator.
+  const selfRollActor = context?.rollActor
+    ?? (["save", "check", "skill", "tool"].includes(actionKind) ? targetActor ?? actionActor : actionActor);
+  conditionData.isSelf = !!reactor?.actor?.uuid && !!selfRollActor?.uuid
+    && reactor.actor.uuid === selfRollActor.uuid;
   conditionData.isCombatTurn = game.combat?.combatant?.tokenId === reactorToken?.id;
   if (conditionData.target) {
     conditionData.target.isCombatTurn = game.combat?.combatant?.tokenId === targetToken?.id;
@@ -2538,7 +2644,7 @@ Hooks.once("ready", () => {
   });
   game.modules.get(MODULE_ID).api = { socket };
   installAbilityCheckIntegration();
-  log("Ready; waiting for Midi-QoL attack, saving throw, ability-check, skill, damage, and AC bonus workflows with Midi-QoL activation conditions");
+  log("Ready; waiting for Midi-QoL attack, saving throw, ability-check, skill, tool, damage, and AC workflows with Midi-QoL activation conditions");
 });
 
 function getExternalItemMacroData(item) {
@@ -3527,10 +3633,12 @@ Hooks.on("midi-qol.preAttackRoll", async (workflow) => {
     const gm = game.users.find(u => u.active && u.isGM);
     const reactorMap = new Map();
     for (const actor of actorMap.values()) {
-      if (actor.uuid === workflow.actor?.uuid) continue;
       const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
       for (const [flagKey, data] of Object.entries(optional)) {
         if (!data || typeof data !== "object") continue;
+        // The initiator remains excluded from third-party attack reactions, but a
+        // bare self predicate explicitly opts its owner into their own roll.
+        if (actor.uuid === workflow.actor?.uuid && !usesExternalBareSelfPredicate(data.activation)) continue;
         const usesCharacterReaction = data.count === "reaction" || data.countAlt === "reaction";
         const user = midi.playerForActor(actor);
         const recipient = user?.active ? user : gm;
@@ -3841,6 +3949,38 @@ function hasExternalSkillFlag(flagData) {
     });
 }
 
+function hasExternalToolFlag(flagData) {
+  const root = flagData?.tool;
+  const toolIds = new Set(getExternalConfiguredToolIds());
+  const reserved = new Set(["all", "fail", "success"]);
+  if (root && typeof root === "object") {
+    for (const key of Object.keys(root)) if (!reserved.has(key)) toolIds.add(key);
+    for (const phase of ["fail", "success"]) {
+      const phaseData = root[phase];
+      if (phaseData && typeof phaseData === "object") {
+        for (const key of Object.keys(phaseData)) if (key !== "all") toolIds.add(key);
+      }
+    }
+  }
+  const paths = [
+    "tool.all", "tool.fail.all", "tool.success.all",
+    ...[...toolIds].flatMap(id => ["tool." + id, "tool.fail." + id, "tool.success." + id])
+  ];
+  return paths.some(path => {
+    const value = foundry.utils.getProperty(flagData, path);
+    return value !== undefined && value !== null && String(value).trim() !== "";
+  });
+}
+
+
+function usesExternalBareSelfPredicate(expression) {
+  // Exclude explicit Actor-identity comparisons and self data-property access.
+  const candidate = String(expression ?? "")
+    .replace(/\b(actor|target)\s*(?:===|==|!==|!=)\s*self\b/gi, "$1.identitySelf")
+    .replace(/\bself\s*(?:===|==|!==|!=)\s*(actor|target)\b/gi, "identitySelf.$1");
+  return /(?<![\w.])self\b(?!\s*(?:\.|\?\.))/i.test(candidate);
+}
+
 async function getCheckMacroWorkflow(midi, reactor, macroSpec = "") {
   const DummyWorkflow = globalThis.MidiQOL?.Workflows?.DummyWorkflow
     ?? midi?.Workflows?.DummyWorkflow;
@@ -3874,7 +4014,7 @@ async function getCheckMacroWorkflow(midi, reactor, macroSpec = "") {
 }
 
 async function processExternalCheckPhase({ checkActor, checkToken, ability, currentRoll, dc, phase, reactors, midi, socket, workflowContext, rollKind = "check" }) {
-  const root = rollKind === "skill" ? "skill" : "check";
+  const root = rollKind === "skill" ? "skill" : rollKind === "tool" ? "tool" : "check";
   const paths = phase === root ? [`${root}.${ability}`, `${root}.all`]
     : phase === "fail" ? [`${root}.fail.${ability}`, `${root}.fail.all`]
     : [`${root}.success.${ability}`, `${root}.success.all`];
@@ -3898,13 +4038,20 @@ async function processExternalCheckPhase({ checkActor, checkToken, ability, curr
       }
       if (!selected || !usedPath) return;
       const activationAllowed = await evaluateExternalActivation(reactor, workflowContext, checkToken, {
-        actionKind: rollKind, phase, ability, roll, dc,
+        actionKind: rollKind, phase, ability, roll, dc, rollActor: checkActor, checkActor,
         actionActorToken: getWorkflowToken(workflowContext) ?? checkToken,
         actionActor: workflowContext?.actor ?? checkActor
       }, midi);
       if (!activationAllowed || !countAvailable(actor, flagData, flagKey)) return;
 
-      const title = `${checkActor.name} — ${rollKind === "skill" ? (CONFIG.DND5E?.skills?.[ability]?.label ? game.i18n.localize(CONFIG.DND5E.skills[ability].label) : ability.toUpperCase()) + " Skill Check" : (ability || "Ability").toUpperCase() + " Ability Check"}`;
+      const skillLabel = CONFIG.DND5E?.skills?.[ability]?.label
+        ? game.i18n.localize(CONFIG.DND5E.skills[ability].label) : ability.toUpperCase();
+      const configuredTool = CONFIG.DND5E?.tools?.[ability];
+      const toolLabel = typeof configuredTool === "string" ? game.i18n.localize(configuredTool)
+        : configuredTool?.label ? game.i18n.localize(configuredTool.label) : ability.toUpperCase();
+      const checkLabel = rollKind === "skill" ? skillLabel + " Skill Check"
+        : rollKind === "tool" ? toolLabel + " Tool Check" : (ability || "Ability").toUpperCase() + " Ability Check";
+      const title = `${checkActor.name} — ${checkLabel}`;
       const promptContext = workflowContext ?? { actor: checkActor, item: null, activity: null };
       const accepted = await promptForReaction(socket, midi, reactor, promptContext, roll, selected.raw, flagData, title);
       if (!accepted) return;
@@ -3921,9 +4068,10 @@ async function processExternalCheckPhase({ checkActor, checkToken, ability, curr
         setConfiguredRollMode(modified, flagData, recipient);
         const beforeRoll = roll;
         roll = modified;
-        await displayExternalBonusRolls(beforeRoll, roll, actor, flagData, `${actor.name} — External Reaction ${rollKind === "skill" ? "Skill" : "Ability Check"} Bonus`, midi, recipient);
+        const bonusKind = rollKind === "skill" ? "Skill" : rollKind === "tool" ? "Tool" : "Ability Check";
+        await displayExternalBonusRolls(beforeRoll, roll, actor, flagData, `${actor.name} — External Reaction ${bonusKind} Bonus`, midi, recipient);
         await consumeCount(actor, flagKey, flagData);
-        log(`Applied optional value '${selected.raw}' (${usedPath}) to ${checkActor.name}'s ability check; count owner: ${actor.name}`);
+        log(`Applied optional value '${selected.raw}' (${usedPath}) to ${checkActor.name}'s ${rollKind} check; count owner: ${actor.name}`);
       } catch (err) {
         error(`Could not apply check value '${selected.raw}' from ${actor.name}.`, err);
       }
@@ -3943,17 +4091,26 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   const config = args?.[0] ?? {};
   const dialog = args?.[1] ?? {};
   const messageData = args?.[2] ?? {};
+  const toolCandidate = config?.tool ?? config?.toolId ?? config?.toolKey ?? config?.midiOptions?.tool
+    ?? roll.options?.externalReactionToolId ?? roll.options?.midiChosenId ?? roll.options?.tool ?? roll.options?.toolId;
+  const rollToolKey = rollKind === "tool" ? getExternalToolKeyFromValue(toolCandidate, checkActor) : null;
   const ability = String(rollKind === "skill"
     ? (config?.skill ?? config?.skillId ?? config?.rollSkills?.[0] ?? config?.midiOptions?.skill ?? roll.options?.midiChosenId ?? roll.options?.skill ?? roll.options?.skillId ?? "")
-    : (config?.ability ?? roll.options?.midiChosenId ?? roll.options?.ability ?? "")).toLowerCase();
+    : rollKind === "tool"
+      ? (rollToolKey ?? "")
+      : (config?.ability ?? roll.options?.midiChosenId ?? roll.options?.ability ?? "")).toLowerCase();
   const dc = checkRollTargetDC(roll, config, dialog, messageData);
   // Ability checks initiated directly from an Actor do not always have a Midi Workflow.
   // Supply a small compatible context for activation conditions without pretending that a
   // full item workflow exists.
   const checkWorkflowContext = {
-    actor: checkActor, item: config?.item ?? null, activity: config?.activity ?? null,
-    ability, skill: rollKind === "skill" ? ability : undefined, roll, rollType: rollKind, dc,
-    currentAction: rollKind === "skill" ? "skillCheck" : "abilityCheck",
+    actor: checkActor, rollActor: checkActor, checkActor,
+    item: config?.item ?? null, activity: config?.activity ?? null,
+    ability, skill: rollKind === "skill" ? ability : undefined,
+    tool: rollKind === "tool" ? ability : undefined, toolId: rollKind === "tool" ? ability : undefined,
+    toolKey: rollKind === "tool" ? ability : undefined,
+    roll, rollType: rollKind, dc,
+    currentAction: rollKind === "skill" ? "skillCheck" : rollKind === "tool" ? "toolCheck" : "abilityCheck",
     options: config?.options ?? {}, targets: new Set()
   };
 
@@ -3962,12 +4119,28 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   const speakerToken = speakerTokenId ? canvas?.tokens?.get?.(speakerTokenId) : null;
   const checkToken = findTokenForActor(checkActor, [speakerToken, checkActor.token]);
   const actorMap = collectSceneActors(checkToken ? [checkToken] : []);
+  // Self-only options belong to the Actor actually making this check, not to a scene
+  // search. Include that Actor even without a scene token, but only when an option
+  // explicitly uses the bare self predicate; ordinary third-party discovery is unchanged.
+  const checkerOptionals = foundry.utils.getProperty(checkActor, FLAG_ROOT) ?? {};
+  const checkerHasSelfCheckOption = Object.values(checkerOptionals).some(flagData => {
+    if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)
+        || !usesExternalBareSelfPredicate(flagData.activation)) return false;
+    return rollKind === "skill" ? hasExternalSkillFlag(flagData)
+      : rollKind === "tool" ? hasExternalToolFlag(flagData) : hasExternalCheckFlag(flagData);
+  });
+  const checkerKey = checkActor.uuid ?? checkActor.id;
+  if (checkerHasSelfCheckOption && checkerKey && !actorMap.has(checkerKey)) {
+    actorMap.set(checkerKey, { actor: checkActor, token: checkToken ?? findTokenForActor(checkActor) });
+  }
   const gm = game.users.find(user => user.active && user.isGM);
   const reactors = new Map();
   for (const { actor, token } of actorMap.values()) {
     const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
     for (const [flagKey, flagData] of Object.entries(optional)) {
-      if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData) || !(rollKind === "skill" ? hasExternalSkillFlag(flagData) : hasExternalCheckFlag(flagData))) continue;
+      if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)
+          || !(rollKind === "skill" ? hasExternalSkillFlag(flagData)
+            : rollKind === "tool" ? hasExternalToolFlag(flagData) : hasExternalCheckFlag(flagData))) continue;
       const user = midi.playerForActor(actor);
       const recipient = user?.active ? user : gm;
       if (!recipient) continue;
@@ -3987,7 +4160,7 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   try {
     if (processedExternalCheckRolls.has(roll)) return result;
     processedExternalCheckRolls.add(roll);
-    const normalPhase = rollKind === "skill" ? "skill" : "check";
+    const normalPhase = rollKind === "skill" ? "skill" : rollKind === "tool" ? "tool" : "check";
     roll = await processExternalCheckPhase({ checkActor, checkToken, ability, currentRoll: roll, dc, phase: normalPhase, reactors, midi, socket, workflowContext: checkWorkflowContext, rollKind });
     let outcome = checkRollOutcome(roll, dc, midi);
     if (outcome === false) {
@@ -4016,14 +4189,59 @@ async function processExternalAbilityCheck(checkActor, args, result, rollKind = 
   return roll;
 }
 
+function installExternalToolCheckIdentifierHook() {
+  if (externalToolCheckHookRegistered || !globalThis.Hooks?.on) return;
+  globalThis.Hooks.on("dnd5e.rollToolCheck", (...args) => {
+    const actor = args.find(value => value?.system?.tools && value?.uuid) ?? null;
+    let toolKey = null;
+    // D&D 5e 6.x publishes the tool ID through the post-roll hook's data object.
+    // Accept the older positional (actor, roll, toolId) form as well.
+    for (const value of [...args].reverse()) {
+      if (typeof value === "string") {
+        toolKey = getExternalToolKeyFromValue(value, actor);
+      } else if (value && typeof value === "object") {
+        toolKey = getExternalToolKeyFromValue(
+          value.tool ?? value.toolId ?? value.toolKey ?? value.data?.tool ?? value.data?.toolId,
+          actor
+        );
+      }
+      if (toolKey) break;
+    }
+    if (!toolKey) return;
+
+    const rolls = [];
+    const collectRolls = value => {
+      if (!value) return;
+      if (value instanceof Roll) {
+        rolls.push(value);
+        return;
+      }
+      if (Array.isArray(value)) {
+        for (const entry of value) collectRolls(entry);
+        return;
+      }
+      if (typeof value === "object") {
+        if (value.rolls) collectRolls(value.rolls);
+        if (value.roll) collectRolls(value.roll);
+      }
+    };
+    for (const argument of args) collectRolls(argument);
+    for (const roll of new Set(rolls)) {
+      roll.options ??= {};
+      roll.options.externalReactionToolId = toolKey;
+    }
+  });
+  externalToolCheckHookRegistered = true;
+}
+
 function installAbilityCheckIntegration() {
   const prototype = CONFIG.Actor?.documentClass?.prototype;
   if (!prototype) {
-    warn("Could not find CONFIG.Actor.documentClass.prototype; external check and skill reactions are unavailable.");
+    warn("Could not find CONFIG.Actor.documentClass.prototype; external ability-check, skill, and tool reactions are unavailable.");
     return false;
   }
   let installed = false;
-  for (const [methodName, rollKind] of [["rollAbilityCheck", "check"], ["rollSkill", "skill"]]) {
+  for (const [methodName, rollKind] of [["rollAbilityCheck", "check"], ["rollSkill", "skill"], ["rollToolCheck", "tool"]]) {
     const original = prototype[methodName];
     if (typeof original !== "function") {
       warn(`Could not find Actor.${methodName}; external ${rollKind} reactions may be unavailable.`);
@@ -4045,6 +4263,7 @@ function installAbilityCheckIntegration() {
     installed = true;
     log(`Installed external ${rollKind} integration on ${methodName}`);
   }
+  installExternalToolCheckIdentifierHook();
   return installed;
 }
 
@@ -4600,10 +4819,12 @@ async function collectExternalDamageReactors(workflow, midi) {
   // explicit action target in activation expressions.
   const referenceToken = actionActorToken;
   for (const { actor, token } of actorMap.values()) {
-    if (actor.uuid === workflow?.actor?.uuid) continue;
     const optional = foundry.utils.getProperty(actor, FLAG_ROOT) ?? {};
     for (const [flagKey, flagData] of Object.entries(optional)) {
       if (!flagData || typeof flagData !== "object" || isExternalItemMacroTrigger(flagData)) continue;
+      // Do not turn this into a general self-reaction: only a bare self predicate
+      // opts the action initiator into its own damage-bonus processing.
+      if (actor.uuid === workflow?.actor?.uuid && !usesExternalBareSelfPredicate(flagData.activation)) continue;
       const selector = getExternalDamageSelector(flagData, actionType);
       if (!selector) continue;
       if (!countAvailable(actor, flagData, flagKey)) continue;

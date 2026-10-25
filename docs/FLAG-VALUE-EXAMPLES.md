@@ -103,7 +103,22 @@ Skill IDs are D&D 5e identifiers, not the displayed skill names. Fail/success-sp
 
 The complete supported skill IDs are `acr`, `ani`, `arc`, `ath`, `dec`, `his`, `ins`, `inv`, `itm`, `med`, `nat`, `prc`, `per`, `prf`, `rel`, `slt`, `ste`, and `sur`.
 
-## 5. Damage bonuses
+## 5. Tool-check numeric bonuses
+
+Tool identifiers are the keys exposed by the installed D&D 5e system configuration (use the identifier, not the displayed name). Normal tool selectors work without a DC; fail/success selectors require a numeric DC.
+
+| Flag | Type | Value |
+|---|---|---|
+| `flags.external-reaction.optional.NAME.tool.all` | Override | `+1` — Offer +1 on any supported tool check. |
+| `flags.external-reaction.optional.NAME.tool.thief` | Override | `1d4` — Apply to a Thieves' Tools check when `thief` is the configured tool identifier. Replace this example key if your system uses another ID. |
+| `flags.external-reaction.optional.NAME.tool.fail.all` | Override | `1d4` — Offer a bonus on any failed tool check with a known DC. |
+| `flags.external-reaction.optional.NAME.tool.fail.thief` | Override | `1d4` — Offer a bonus on a failed Thieves' Tools check with a known DC. |
+| `flags.external-reaction.optional.NAME.tool.success.all` | Override | `1d4` — Offer a bonus on any successful tool check with a known DC. |
+| `flags.external-reaction.optional.NAME.tool.success.thief` | Override | `1d4` — Offer a bonus on a successful Thieves' Tools check with a known DC. |
+
+The tool-specific selector is checked before the matching phase's `.all` fallback. The system obtains valid tool identifiers from the installed D&D 5e configuration and the Actor's tool data. If a roll does not expose its tool identifier, `.all` selectors can still apply but `tool.{tool}` and `tool.prof` / `tool.exp` cannot safely infer the specific tool.
+
+## 6. Damage bonuses
 
 For untyped/action-specific bonuses, the action-specific selector takes priority over `damage.all`. Typed damage selectors create a separate damage roll of the specified type. One group selects one matching damage path per damage pass; use separate `NAME` groups for independent bonus options.
 
@@ -140,7 +155,7 @@ For untyped/action-specific bonuses, the action-specific selector takes priority
 
 Supported action suffixes for typed damage include `mwak`, `rwak`, `msak`, `rsak`, `other`, `save`, and `util`. Do not use `heal` beneath a damage type. `midi-none` is not a damage type; use `none` for untyped damage. Typed damage values should be damage formulas or a macro returning a roll/formula, not standalone reroll controls.
 
-## 6. Armour Class (AC) bonuses
+## 7. Armour Class (AC) bonuses
 
 AC options belong on the Actor being attacked, because that Actor is the one whose AC is adjusted before Midi-QoL adjudicates the hit. An AC bonus does not spend the character's reaction unless the count settings request it.
 
@@ -160,7 +175,10 @@ AC options belong on the Actor being attacked, because that Actor is the one who
 
 Within one group, selector priority is attack-type-and-hit, attack type, hit-only, then general AC. Use separate groups if you want multiple AC options to be offered independently.
 
-## 7. Activation conditions
+## 8. Activation conditions
+
+Bare `self` is a boolean self-only predicate, distinct from `actor == self`. Proficiency predicates are composable: use `self && (skill.prof || tool.prof)` for an option that requires the owner to be rolling and requires proficiency in a skill or tool.
+
 
 Set the following as the value of `flags.external-reaction.optional.NAME.activation`. Conditions are evaluated in the context of the current reaction. Empty or missing conditions allow the option. Use single quotes inside expressions where convenient, and test expressions carefully: Midi-QoL's evaluator can permissively allow an option if evaluation errors.
 
@@ -168,6 +186,10 @@ Set the following as the value of `flags.external-reaction.optional.NAME.activat
 |---|---|---|
 | `flags.external-reaction.optional.NAME.activation` | Override | `true` — Always allow this option. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `false` — Never allow this option. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `self` — Allow only when the Actor owning the option is the Actor performing the relevant roll. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `skill.prof` or `tool.prof` — Require proficiency or expertise in the skill/tool being rolled. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `skill.exp` or `tool.exp` — Require expertise in the skill/tool being rolled. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `self && (skill.prof || tool.prof)` — Example self-only proficiency condition for Psi-Bolstered Knack. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `enemy` — Allow only when reactor and action target are enemies. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `friendly` — Allow only when reactor and action target have a friendly relationship. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `CanSee` — Allow only when the reactor can see the action target. |
@@ -198,7 +220,7 @@ Set the following as the value of `flags.external-reaction.optional.NAME.activat
 
 Context reminder: `self` / `reactor` is the Actor owning the option; `actor` is the initiating Actor; `target` is the action recipient. For damage reactions, `target` is the first available affected target. Bare `range` remains the distance from the reactor to `target` for backward compatibility. `actor.range` measures reactor-to-initiator distance, while `target.range` explicitly measures reactor-to-action-target distance. All use Midi-QoL's distance measurement and do not themselves account for walls; combine with `CanSee` when appropriate. If a required token/distance is unavailable, the condition is rejected.
 
-## 8. Usage counts and resource costs
+## 9. Usage counts and resource costs
 
 The count fields control availability and resource consumption. Add them to the same optional group as the triggering bonus. Without `count` or `countAlt`, accepting the option does not automatically spend the character's reaction; the granting effect is still subject to its own lifecycle.
 
@@ -224,7 +246,7 @@ The count fields control availability and resource consumption. Add them to the 
 
 Use the exact literal values shown for special count formats. A `spellslot X` selector is cancelled if the user cancels the picker; no slot is spent and the optional reaction is not applied. If both count fields specify spell slots, the higher minimum controls which slots can be selected.
 
-## 9. Start a D&D 5e Activity from an Item Macro return value
+## 10. Start a D&D 5e Activity from an Item Macro return value
 
 The supported route for launching a D&D 5e Activity from an External Reaction is to invoke an Item Macro and return the Activity reference from that macro. The Activity must be embedded in an Item on the reactor's Actor. Do **not** set `activity.trigger` directly to an Activity UUID; that field selects the Item Macro to run and the workflow pass.
 
@@ -272,7 +294,7 @@ Supported targeting modes are `actor` (the Actor that initiated the original wor
 
 Cancellation does not roll back earlier rolls, consumed resources, HP changes, or effects. Pick the earliest macro pass that provides the context you need, and test the specific Activity and pass in a disposable world.
 
-## 10. Bonus-roll display and roll mode
+## 11. Bonus-roll display and roll mode
 
 | Flag | Type | Value |
 |---|---|---|
@@ -285,7 +307,7 @@ Cancellation does not roll back earlier rolls, consumed resources, HP changes, o
 
 If `displayBonusRolls` is absent, External Reaction consults Midi-QoL's saved settings/API snapshot and then its initialized default. If `rollMode` is absent, Midi-QoL's `core.messageMode` behavior and Foundry's core roll-mode setting are used where applicable. Roll visibility cannot be retroactively changed for messages that have already been seen.
 
-## 11. Roll-value operators and macros
+## 12. Roll-value operators and macros
 
 These are example **values** for supported roll-modifier flags such as `attack.*`, `save.*`, `check.*`, `skill.*`, `damage.*`, and `ac`. Not every value makes sense for every flag family: reroll operators need an existing roll, and typed damage selectors should be formulas or macros that return a formula/roll.
 
@@ -313,7 +335,7 @@ These are example **values** for supported roll-modifier flags such as `attack.*
 
 **Unsupported:** `ActivityMacro` is intentionally not supported as a roll value. To launch a D&D 5e Activity, configure the External Reaction Item Macro path (`activity.trigger = ItemMacro, <pass>`) and return the Activity UUID/reference from that Item Macro. Macro names/identifiers must match what Midi-QoL can resolve in the installed version.
 
-## 12. Combining fields into practical options
+## 13. Combining fields into practical options
 
 The following are small recipes. Each row is still a separate Active Effect change.
 
@@ -370,11 +392,30 @@ The Item Macro—not the Active Effect—chooses which embedded Activity to use.
 | `flags.external-reaction.optional.ArcaneBoost.count` | Override | `every-turn` — Once per turn. |
 | `flags.external-reaction.optional.ArcaneBoost.activation` | Override | `actor.disposition == hostile && CanSee` — Restrict to a visible enemy actor. |
 
+### Example G — Improve the owner’s own proficient tool check
+
+| Flag | Type | Value |
+|---|---|---|
+| `flags.external-reaction.optional.ArtisansPrecision.tool.all` | Override | `1d4` — Add 1d4 to a supported tool check. |
+| `flags.external-reaction.optional.ArtisansPrecision.activation` | Override | `self && tool.prof` — Only offer the option when the owner of the Active Effect is making a tool check for which they have proficiency or expertise. |
+| `flags.external-reaction.optional.ArtisansPrecision.count` | Override | `each-turn` — Limit the option to once per turn. |
+
+### Example H — Use a reaction to assist a Thieves’ Tools check
+
+| Flag | Type | Value |
+|---|---|---|
+| `flags.external-reaction.optional.ToolmastersAid.tool.fail.thief` | Override | `1d4` — Offer +1d4 when the Thieves’ Tools check initially fails and has a numeric DC. |
+| `flags.external-reaction.optional.ToolmastersAid.tool.success.thief` | Override | `1d4` — Offer +1d4 after a successful Thieves’ Tools check with a numeric DC. |
+| `flags.external-reaction.optional.ToolmastersAid.activation` | Override | `tool` — Limit this option to tool checks. |
+| `flags.external-reaction.optional.ToolmastersAid.count` | Override | `reaction` — Spend the reacting character’s Reaction when accepted. |
+
+The example tool identifier is `thief`; replace it with the identifier used by your installed D&D 5e system if it differs. Tool fail/success phases require a numeric DC. The success-phase modifier is intended for features where the final total or margin after success still matters.
+
 ## Important behavior notes
 
 1. **The optional group is the unit of selection.** One matching optional group per reactor is processed per phase. If you want two independently offered damage options, define separate group names rather than relying on two matching paths in one group.
 2. **Path priority matters.** Action-specific attack/damage selectors take precedence over their general `all` selector where documented. AC has its own selector priority described above.
-3. **Not all phases can always be inferred.** Check/skill fail/success flags require a numeric DC. Ordinary skill rolls often do not include one.
+3. **Not all phases can always be inferred.** Check/skill/tool fail/success flags require a numeric DC. Ordinary skill and tool rolls often do not include one.
 4. **AC belongs on the defender.** Put `ac` changes on the Actor receiving the attack, not on the attacker.
 5. **Counts are resource rules, not just labels.** Choose `reaction`, `bonusAction`, item/activity uses, or spell slots only when that resource should actually be required/consumed.
 6. **Activation conditions are executable expressions.** Keep them simple, verify spelling and identifiers, and test them with Midi-QoL debug logging enabled.
