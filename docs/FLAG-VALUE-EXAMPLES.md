@@ -186,6 +186,10 @@ Set the following as the value of `flags.external-reaction.optional.NAME.activat
 |---|---|---|
 | `flags.external-reaction.optional.NAME.activation` | Override | `true` — Always allow this option. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `false` — Never allow this option. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `self` — Allow only when the Actor owning the option is the Actor performing the relevant roll. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `skill.prof` or `tool.prof` — Require proficiency or expertise in the skill/tool being rolled. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `skill.exp` or `tool.exp` — Require expertise in the skill/tool being rolled. |
+| `flags.external-reaction.optional.NAME.activation` | Override | `self && (skill.prof || tool.prof)` — Example self-only proficiency condition for Psi-Bolstered Knack. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `enemy` — Allow only when reactor and action target are enemies. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `friendly` — Allow only when reactor and action target have a friendly relationship. |
 | `flags.external-reaction.optional.NAME.activation` | Override | `CanSee` — Allow only when the reactor can see the action target. |
