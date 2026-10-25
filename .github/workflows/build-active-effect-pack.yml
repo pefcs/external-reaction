@@ -42,8 +42,14 @@ jobs:
           node-version: 22
       - name: Install Foundry pack compiler
         run: npm install --no-save @foundryvtt/foundryvtt-cli@0.0.6
-      - name: Compile Active Effect compendium
+      - name: Validate Active Effect source and manifest
         run: node tools/build-active-effect-pack.mjs
+      - name: Compile native Active Effect compendium
+        run: npx fvtt package pack -n examples --inputDirectory pack-source/active-effects --outputDirectory packs
+      - name: Verify compiled Active Effect compendium
+        run: node tools/build-active-effect-pack.mjs --verify
+      - name: Check module JavaScript syntax
+        run: node --check scripts/external-reaction.js
       - name: Package installable module
         run: |
           mkdir -p dist/external-reaction
