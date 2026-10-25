@@ -2,12 +2,12 @@
 
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
 
-- [ ] On an ItemMacro-backed option, set activation to `skill.prof`; roll a skill check the original workflow target is proficient in and verify the option is offered.
+- [ ] On an External Reaction optional flag, set activation to `skill.prof`; roll a skill check the original workflow target is proficient in and verify the option is offered.
 - [ ] Repeat with an expertise skill; `skill.prof` should still pass.
 - [ ] Set activation to `skill.exp`; verify expertise passes, ordinary proficiency fails, and half proficiency (`0.5`) fails.
 - [ ] Change the workflow to a different skill the target is not proficient in; both conditions should fail based on that actual skill, not another proficient skill.
 - [ ] Verify a non-skill check never passes either shortcut.
-- [ ] Verify multi-skill Check Activities use the selected workflow skill, and fail closed if no specific skill can be identified.
+- [ ] Verify multi-skill Check Activities use the selected workflow skill when available, and fail closed if no specific skill can be identified.
 - [ ] Verify the condition fails closed if the original workflow target or skill cannot be resolved.
 - [ ] Retest the confirmed beta.4 `activation = damage` path and Activity return target suffixes (`actor` and no suffix).
 
