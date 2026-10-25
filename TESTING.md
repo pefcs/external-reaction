@@ -8,7 +8,7 @@
 
 ## v0.10.9-beta.3 — corrected post-damage hook
 
-- [ ] With `activation = damage`, cause a target to take positive HP or temporary HP damage through Midi-QoL; verify only that target is prompted via `midi-qol.isDamaged`.
+- [ ] With `activation = damage`, cause a target to take positive HP or temporary HP damage through Midi-QoL; verify only that target is prompted via the then-implemented `midi-qol.damageApplied` listener (known not to fire in V14; beta.4 replaces it).
 - [ ] Confirm a miss and a hit that causes zero HP damage do not prompt.
 - [ ] Verify damage to multiple targets produces independent prompts only for targets with positive applied HP or temporary HP damage.
 - [ ] Retest Hellish Rebuke Activity return with `actor` and without a suffix; confirm both target flows remain correct.
