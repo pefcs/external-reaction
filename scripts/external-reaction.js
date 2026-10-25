@@ -831,7 +831,9 @@ function getExternalWorkflowEventFlags(workflow, context = {}) {
   const isCheck = context.check === true || actionKind === "check" || actionKind === "skill" || activityType === "check" || actionType === "check";
   const isSkill = context.skill === true || actionKind === "skill" || Boolean(activity?.check?.skills?.length || workflow?.check?.skill || workflow?.skill);
   const damageActivity = activity?.damage;
-  const isDamage = context.damage === true || actionKind === "damage" || (Array.isArray(damageActivity?.parts) && damageActivity.parts.length > 0);
+  // An Activity having a damage formula does not mean damage is occurring now.
+  // The damage event flag is true only when the current context is an actual damage stage.
+  const isDamage = context.damage === true || actionKind === "damage";
   const isHeal = context.heal === true || actionKind === "heal" || activityType === "heal" || actionType === "heal";
   const isConcentration = context.concentration === true || actionKind === "concentration";
   const isDeathSave = context.deathSave === true || actionKind === "deathSave" || actionKind === "deathsave";
@@ -879,10 +881,18 @@ const EXTERNAL_ITEM_MACRO_PASSES = new Map([
     "preCompleted", "postCompleted", "preRollFinished", "postRollFinished"].map(pass => [pass.toLowerCase(), pass])
 ]);
 
+function isExternalDamageActivation(flagData) {
+  return typeof flagData?.activation === "string" && flagData.activation.trim().toLowerCase() === "damage";
+}
+
 function getExternalItemMacroPass(flagData) {
   const rawTrigger = String(foundry.utils.getProperty(flagData, "activity.trigger") ?? "").trim();
   const triggerParts = rawTrigger.split(",").map(part => part.trim()).filter(Boolean);
   if (triggerParts[0]?.toLowerCase() !== "itemmacro") return null;
+
+  // The exact activation value damage means the reactor is responding to taking damage.
+  // Route it to a target-specific post-application hook rather than a generic workflow pass.
+  if (isExternalDamageActivation(flagData)) return "targetDamageApplied";
 
   // Keep the trigger discriminator compatible with the original format, while also
   // accepting Midi-style "ItemMacro, postAttackRoll" and a dedicated macroPass field.
@@ -891,6 +901,7 @@ function getExternalItemMacroPass(flagData) {
     ?? triggerParts[1]
     ?? "postActiveEffects";
   const passKey = String(configuredPass).trim().toLowerCase();
+  if (passKey === "targetdamageapplied" || passKey === "damaged") return "targetDamageApplied";
   return EXTERNAL_ITEM_MACRO_PASSES.get(passKey) ?? null;
 }
 
@@ -1633,12 +1644,19 @@ async function useExternalTriggeredActivity(activity, actor, suppressItemMacroUu
   } : null;
   if (context) externalTriggeredActivityContexts.push(context);
   try {
+    let useConfig = {};
     if (Array.isArray(targetsToUse)) {
       for (const [index, token] of targetsToUse.entries()) {
         token.setTarget(true, { user, releaseOthers: index === 0 });
       }
+      // Pass selected token UUIDs explicitly; Midi-QoL may not use the visible
+      // Foundry target list as the target set for a triggered Activity.
+      const targetUuids = targetsToUse
+        .map(token => token?.document?.uuid ?? token?.uuid)
+        .filter(uuid => typeof uuid === "string" && uuid.length > 0);
+      useConfig = { midiOptions: { targetUuids, ignoreUserTargets: true } };
     }
-    await activity.use();
+    await activity.use(useConfig);
     return true;
   } finally {
     if (context) {
@@ -2816,7 +2834,7 @@ async function executeExternalItemMacroTrigger({ reactor, workflow, flagKey, fla
   const initiatingItem = workflow?.item ?? activity?.item ?? stageContext.item ?? null;
   const actionActor = workflow?.actor ?? stageContext.actionActor ?? actionActorToken?.actor ?? initiatingItem?.actor ?? null;
   const eventContext = {
-    type: eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
+    type: eventFlags.damage ? "damage" : eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse",
     eventFlags,
     phase: macroPass,
     macroPass,
@@ -3031,8 +3049,18 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
   if (!workflow || !macroPass) return { cancel: false };
   const state = getExternalItemMacroDispatchState(workflow);
   const passKey = String(macroPass).toLowerCase();
-  if (state.seenPasses.has(passKey) || state.dispatching || workflow.aborted) return { cancel: false };
-  state.dispatching = true;
+  const damageTarget = passKey === "targetdamageapplied"
+    ? normalizeToken(stageContext.actionTargetToken ?? stageContext.targets?.[0]) : null;
+  const targetId = damageTarget?.document?.uuid ?? damageTarget?.uuid ?? damageTarget?.id;
+  const dispatchKey = damageTarget ? passKey + ":" + targetId : passKey;
+  // An AOE may call this once per damaged target. A prompt for one creature must
+  // not suppress the independent reaction for another creature.
+  state.dispatchingKeys ??= new Set();
+  if (state.seenPasses.has(dispatchKey)
+      || (damageTarget ? state.dispatchingKeys.has(dispatchKey) : state.dispatching)
+      || workflow.aborted) return { cancel: false };
+  if (damageTarget) state.dispatchingKeys.add(dispatchKey);
+  else state.dispatching = true;
   try {
     const midi = game.modules.get("midi-qol")?.api;
     const socket = game.modules.get(MODULE_ID)?.api?.socket;
@@ -3040,7 +3068,11 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
     const activity = stageContext.activity ?? workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
     const item = stageContext.item ?? workflow.item ?? activity?.item ?? null;
     const actionType = String(stageContext.actionType ?? activity?.actionType ?? activity?.system?.actionType ?? item?.system?.actionType ?? "").toLowerCase();
-    const eventFlags = getExternalWorkflowEventFlags(workflow, { ...stageContext, actionType, activity, item, itemUse: true });
+    const isDamageApplication = passKey === "targetdamageapplied" || stageContext.damageApplication === true;
+    const eventFlags = getExternalWorkflowEventFlags(workflow, {
+      ...stageContext, actionType, activity, item, itemUse: true,
+      ...(isDamageApplication ? { actionKind: "damage", damage: true } : {})
+    });
     const actionActorToken = normalizeToken(stageContext.actionActorToken) ?? getWorkflowToken(workflow) ?? findTokenForActor(stageContext.actionActor ?? item?.actor);
     const actionActor = workflow.actor ?? stageContext.actionActor ?? actionActorToken?.actor ?? item?.actor;
     // The hook may fire before Midi has copied its usage context onto Workflow.
@@ -3054,7 +3086,7 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
       debug("Skipping itemMacro interception because no workflow event flags were identified.", { actor: actionActor?.name, item: item?.name, macroPass, actionType });
       return { cancel: false };
     }
-    state.seenPasses.add(passKey);
+    state.seenPasses.add(dispatchKey);
     const targets = [...(stageContext.targets ?? workflow.targets ?? game.user.targets ?? [])].map(normalizeToken).filter(Boolean);
     const actionTargetToken = normalizeToken(stageContext.actionTargetToken)
       ?? [...Array.from(workflow?.hitTargets ?? []), ...Array.from(workflow?.hitTargetsEC ?? []), ...targets]
@@ -3065,6 +3097,8 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
 
     for (const { actor, token } of actorMap.values()) {
       if (!actor || actor.uuid === actionActor?.uuid) continue;
+      // A target-damage event may only prompt the Actor whose damage was applied.
+      if (isDamageApplication && actor.uuid !== actionTargetToken?.actor?.uuid) continue;
       const options = collectActorExternalOptions(actor);
       for (const [flagKey, flagData] of Object.entries(options)) {
         if (!flagData || typeof flagData !== "object" || !isExternalItemMacroTrigger(flagData)) continue;
@@ -3090,7 +3124,7 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
         if (typeof itemMacro?.command !== "string" || !itemMacro.command.trim()) {          debug("Skipping itemMacro optional because no macro command was found on its source Item (checked DAE/DIME and Item Macro flags).", { reactor: actor.name, flagKey, sourceItem: macroItem.name, macroPass });
           continue;
         }
-        const actionKind = eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse";
+        const actionKind = eventFlags.damage ? "damage" : eventFlags.cast ? "cast" : eventFlags.attack ? "attack" : eventFlags.save ? "save" : eventFlags.skill ? "skill" : eventFlags.check ? "check" : "itemUse";
         const activationAllowed = await evaluateExternalActivation(reactor, workflow, actionActorToken, {
           ...stageContext, actionKind, phase: macroPass, actionType, activity, item, eventFlags,
           actionActorToken, actionActor, actionTargetToken: actionTargetToken ?? actionActorToken
@@ -3119,7 +3153,8 @@ async function dispatchExternalItemMacroStage(workflow, macroPass, stageContext 
     error(`External itemMacro workflow interception failed at ${macroPass}; leaving the original Midi-QoL workflow unchanged.`, err);
     return { cancel: false };
   } finally {
-    state.dispatching = false;
+    if (damageTarget) state.dispatchingKeys.delete(dispatchKey);
+    else state.dispatching = false;
   }
 }
 
@@ -3224,6 +3259,36 @@ async function dispatchExternalPreItemRollHook(...hookArgs) {
     return false;
   }
 }
+
+// Process the per-target hook after Midi-QoL reports a damage application. An
+// unused damage Activity, a missed attack, or zero applied HP damage does not qualify.
+Hooks.on("midi-qol.damaged", async (target, context = {}) => {
+  try {
+    const targetToken = normalizeToken(target);
+    const workflow = context?.workflow ?? context?.damageItem?.workflow ?? null;
+    const damageItemCandidates = [context?.damageItem, context?.ditem, workflow?.ditem, workflow?.damageItem].filter(Boolean);
+    const damageItem = damageItemCandidates.find(candidate => candidate.hpDamage !== undefined && candidate.hpDamage !== null) ?? null;
+    const hpDamage = Number(damageItem?.hpDamage ?? 0);
+    if (!workflow || !targetToken?.actor || !(hpDamage > 0)) return;
+    const actionActorToken = getWorkflowToken(workflow);
+    const activity = workflow.activity ?? workflow.item?.system?.activities?.get?.(workflow.activityId) ?? null;
+    const item = context?.item ?? workflow.item ?? activity?.item ?? null;
+    await dispatchExternalItemMacroStage(workflow, "targetDamageApplied", {
+      actionKind: "damage",
+      damage: true,
+      damageApplication: true,
+      damageItem,
+      actionActor: workflow.actor ?? item?.actor ?? actionActorToken?.actor ?? null,
+      actionActorToken,
+      actionTargetToken: targetToken,
+      targets: [targetToken],
+      activity,
+      item
+    });
+  } catch (err) {
+    error("External Reaction could not process a damaged target; the completed damage application is unaffected.", err);
+  }
+});
 
 Hooks.on("midi-qol.preItemRoll", (...hookArgs) => dispatchExternalPreItemRollHook(...hookArgs));
 Hooks.on("midi-qol.preItemRollV2", (...hookArgs) => dispatchExternalPreItemRollHook(...hookArgs));
