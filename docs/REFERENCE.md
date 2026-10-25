@@ -15,9 +15,9 @@ Core reaction functionality includes:
 - AC bonuses: `ac` on the attacked/receiving actor, applied before Midi-QoL adjudicates attack hits; it does not automatically spend a reaction unless `count` / `countAlt` explicitly requests `reaction`.
 - Optional roll controls: `criticalDamage`, `displayBonusRolls`, and `rollMode` are honored for the relevant bonus workflow.
 - Roll values: numeric/dice formulas, `reroll`, `reroll-query`, `reroll-kh`, `reroll-kl`, `reroll-max`, `reroll-min`, `reroll-withBonus {expr}`, `replace {formula}`, `success`, `fail`, `critical`, `ItemMacro`, `ItemMacro.{name}`, `ItemMacro.{itemUuid}`, `Macro.{name}`, and `function.{name}`. `ActivityMacro` remains intentionally unsupported.
-- **Triggered Activities:** add `activity.trigger` to an existing optional reaction to automatically use a D&D 5e Activity after the player accepts that reaction. Area activities follow the normal Activity use flow; direct-target activities get an Activity-aware target picker.
-- **Foundry V14 targeting:** triggered Activities now set selected tokens with `Token#setTarget()` rather than the removed `game.user.updateTokenTargets()` method. Existing targets are released once, then all picker-selected tokens are added before the Activity is used.
-- **Triggered Activity batching:** accepting an option queues its Activity until the current attack/save/check/skill/damage/AC reaction batch has finished. The queue deduplicates the same reactor + option key + Activity, preventing repeated target selectors for each accepted count across an AOE.
+- **Activities from Item Macro returns:** set `activity.trigger` to `ItemMacro` (optionally with a Midi-QoL workflow pass), then have the macro return an embedded Activity UUID/reference or a supported structured Activity result. Do not put an Activity UUID directly in `activity.trigger`.
+- **Foundry V14 targeting:** an Activity returned by an Item Macro uses Foundry V14's `Token#setTarget()` API when applying selected targets, rather than the removed `game.user.updateTokenTargets()` method.
+- **Activity targeting:** returned area Activities use their normal template flow; direct-target Activities use the module's target picker unless the macro return explicitly targets `actor`, `target`, or `self`.
 - Count availability/consumption: numeric counts, `each-turn`, `each-round`, `turn`, `reaction`, `bonusAction`, `every`, ItemUses, ActivityUses, `@system.path`, and the new `spellslot X` format for an interactively selected spell slot of level X or higher, including Pact Magic.
 - **Count concurrency protection:** each optional reaction re-checks the current granting Active Effect and resource state immediately before prompting/applying; per-reactor processing is serialized so multi-target saves cannot reuse the same reaction or item use across parallel target results.
 - **Actor identity handling:** self-owned save/check/skill/ac options are no longer excluded before activation evaluation. `actor == self` / `target == self` and their inverse conditions determine eligibility; the same Actor is still blocked from reacting to its own outgoing attack or damage workflow.
@@ -172,21 +172,15 @@ The helpers return `false` when no owned item matches. If the expression referen
 
 Use JavaScript comparison operators such as `==`, `===`, `<`, `<=`, `>`, and `>=`. The less-than-or-equal operator is `<=` (not `<==`). Prefer `range <= 40` for practical range checks: exact equality (`range == 40`) only matches a distance equal to the current distance measurement result. Distance is reported in the scene's distance units and follows Midi-QoL's Distance Measurement setting, including its configured center/perimeter/default behavior and gridless fudge factor. `range` measures distance independently of walls and sight; combine it with `CanSee` when both conditions matter.
 
-### Triggered Activities
+### Start an Activity from an Item Macro return value
 
-Add this Active Effect change to the same `flags.external-reaction.optional.NAME.*` group as the reaction's attack/save/check/skill/damage/AC/activity.trigger option:
-
-| Active Effect change key | Example value |
-|---|---|
-| `flags.external-reaction.optional.NAME.activity.trigger` | `Actor.abc123.Item.def456.Activity.ghi789` |
-
-The normal Activity trigger runs **after the reactor accepts** the optional-reaction prompt. It runs on the reactor's owning user's client (or the GM fallback), then the original optional bonus/reaction continues through its existing processing. If the player cancels the triggered Activity's target selector, the triggered Activity is skipped but the already-accepted optional bonus still resolves.
+To launch a D&D 5e Activity as part of an External Reaction, configure the granting Active Effect to invoke the Item Macro at the appropriate workflow pass. The `activity.trigger` field is the Item Macro dispatcher: use `ItemMacro` or `ItemMacro, <pass>`, then return the Activity UUID/reference or a structured Activity result from the macro. Do not set `activity.trigger` to an Activity UUID directly.
 
 #### Item Macro workflow interception
 
 **Do not assign the source Item's Item Macro to any Midi-QoL On Use Macro stage when External Reaction owns its invocation.** Keep the command stored on the Item using DAE/DIME Item Macro storage (or supported legacy storage), but leave `ItemMacro` out of that Item's Midi-QoL On Use Macro configuration. External Reaction calls the command itself at the configured pass. Registering it with Midi-QoL as well can cause duplicate or recursive execution when the macro launches an Activity from that Item.
 
-Set `flags.external-reaction.optional.NAME.activity.trigger = itemMacro` to run an Item Macro at the `postActiveEffects` stage by default, as External Reaction’s configured default for a bare trigger. A bare `ItemMacro` with no pass extension therefore runs at `postActiveEffects`. The optional group must be granted by an Active Effect, just like other External Reaction options. The Item Macro is resolved from the Item that originated the granting Active Effect. If the effect origin cannot be resolved, External Reaction searches the reactor Actor’s embedded Items for the Item containing the matching External Reaction Active Effect. Macro data is read from the serialized DAE/DIME `flags.dae.macro` first, then legacy Item Macro `flags.itemacro.macro`. The name/identifier/ID match against `NAME` remains a final fallback. Optional `getFlag` fallbacks are guarded because Foundry V14 may throw when a legacy flag scope is not registered or active.
+Set `flags.external-reaction.optional.NAME.activity.trigger = ItemMacro` to run the stored Item Macro at the default `postActiveEffects` stage. Use `ItemMacro, <pass>` or the separate `activity.macroPass` field to choose another supported pass. The optional group must be granted by an Active Effect. The Item Macro is resolved from the Item that originated the granting Active Effect; if the effect origin cannot be resolved, External Reaction searches the reactor Actor's embedded Items for the Item containing the matching External Reaction Active Effect. Macro data is read from serialized DAE/DIME `flags.dae.macro` first, then legacy Item Macro `flags.itemacro.macro`. The name/identifier/ID match against `NAME` remains a final fallback. Optional `getFlag` fallbacks are guarded because Foundry V14 may throw when a legacy flag scope is not registered or active. The `activity.trigger` field chooses the Item Macro and pass; the Activity to launch is supplied by the macro's return value.
 
 Choose a different stage in either of these equivalent ways:
 
@@ -261,7 +255,7 @@ The Activity must belong to an embedded Item on the reactor's Actor. Activities 
 - **Midi Targeting — Targets you can see:** when the Activity has this setting enabled and Midi-QoL's global `Targets you can see` mechanic is set to `enforce`, unseen tokens are excluded from the selector. Midi-QoL keeps its own normal checks when the Activity starts.
 - After selection, the module replaces the user's current target set with the chosen tokens and starts the Activity through its standard `use()` API, as if it had been clicked in the UI. The chosen tokens remain targeted after usage.
 
-Example: a character has an optional `ac` or `attack.all` reaction and `activity.trigger` set to the UUID of an embedded *Shield* Activity. When the player accepts the reaction, the module invokes that Activity. For a direct-target Activity, the player selects one or more valid tokens; for an area Activity, normal area/template targeting begins.
+Example: configure a reactor's granting Active Effect with `activity.trigger = ItemMacro, postAttackRoll` and keep the Item Macro command on an Item embedded on that reactor. The macro can return `"Actor.<actorId>.Item.<itemId>.Activity.<activityId>"` to start the chosen Activity after hit/miss adjudication; return `"... actor"` or `{ action: "activity", activityUuid: "...", target: "actor" }` to target the original initiating Actor without a custom picker. For an area Activity, the usual template placement and Activity flow begin. The `actorId` in the Activity UUID is the reactor's Actor, which owns the Activity.
 
 ## Spell-slot costs in Count / CountAlt
 
