@@ -35,16 +35,6 @@
         "conditions": "{}",
         "replacement": "",
         "priority": null
-      },
-      {
-        "key": "flags.external-reaction.optional.LastStand.displayBonusRolls",
-        "type": "override",
-        "value": "true",
-        "phase": "initial",
-        "_id": "c000000000000124",
-        "conditions": "{}",
-        "replacement": "",
-        "priority": null
       }
     ],
     "origin": {
