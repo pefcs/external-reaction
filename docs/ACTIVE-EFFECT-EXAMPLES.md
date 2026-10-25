@@ -9,7 +9,7 @@ This pack targets Foundry VTT V14 and D&D 5e 6.0.6, with External Reaction, Midi
 3. Drag a ready-to-use Active Effect onto the actor who should own the External Reaction option.
 4. Test the effect in a disposable world and remove it from the actor when finished.
 
-The entries use D&D 5e's Active Effect document structure and Override mode for External Reaction configuration flags. Each entry uses its own optional group name so that adding multiple examples to one actor does not overwrite an unrelated group.
+The entries use D&D 5e's Active Effect document structure and Override mode for External Reaction configuration flags. Each entry uses its own optional group name so that adding multiple examples to one actor does not overwrite an unrelated group. Most entries deliberately omit `displayBonusRolls`, allowing the current Midi-QoL setting to control whether the before/after bonus card is shown. Only **Defense — Arcane Aegis** explicitly sets it to `true`, and **Check — Private Oracle's Insight** sets it to `false`, to demonstrate both kinds of per-option override.
 
 ## Coverage
 
