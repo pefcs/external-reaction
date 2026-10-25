@@ -2,6 +2,7 @@
 
 - [ ] Confirm the module exposes **External Reaction — Practical Examples** as a D&D 5e ActiveEffect compendium.
 - [ ] Open several entries and verify their names, descriptions, and change lists survive import.
+- [ ] Confirm only **Defense — Arcane Aegis** sets `displayBonusRolls = true` and **Check — Private Oracle's Insight** sets `displayBonusRolls = false`; the other entries should inherit Midi-QoL's configured setting.
 - [ ] Drag an immediately usable example onto a test character, then confirm its effect changes and flags appear on the actor.
 - [ ] Test Arcane Aegis / Shieldbearer's Brace against attacks; confirm only matching conditions offer a reaction.
 - [ ] Test Protective Intercession and Agile Escape on failed saves.
