@@ -890,8 +890,9 @@ function getExternalItemMacroPass(flagData) {
   const triggerParts = rawTrigger.split(",").map(part => part.trim()).filter(Boolean);
   if (triggerParts[0]?.toLowerCase() !== "itemmacro") return null;
 
-  // The exact activation value damage means the reactor is responding to taking damage.
-  // Route it to a target-specific post-application hook rather than a generic workflow pass.
+  // `activation = damage` is a target-taking-damage trigger, not a generic
+  // Midi expression. Route it to Midi's per-target isDamaged hook, after damage
+  // calculation but before HP updates; misses and zero damage cannot prompt.
   if (isExternalDamageActivation(flagData)) return "targetDamageApplied";
 
   // Keep the trigger discriminator compatible with the original format, while also
