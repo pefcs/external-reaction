@@ -13,7 +13,7 @@ The entries use D&D 5e's Active Effect document structure and Override mode for 
 
 ## Coverage
 
-The pack includes AC reactions; attack-roll bonuses including miss-only selectors and rerolls; saving-throw, ability-check, and skill-check bonuses; the `skill.prof` and `skill.exp` activation shortcuts; typed and untyped damage bonuses; critical-damage handling; activation filters based on disposition, range, visibility, hit points, target identity, proficiency, and embedded item possession; count resources using reactions, bonus actions, turn/round limits, spell slots, and ItemUses; roll-mode and bonus-card display controls; and disabled templates for ActivityUses, character-specific Activity references, and the special damage-triggered Item Macro path.
+The pack includes AC reactions; attack-roll bonuses including miss-only selectors and rerolls; saving-throw, ability-check, and skill-check bonuses; the `skill.prof` and `skill.exp` activation shortcuts; typed and untyped damage bonuses; critical-damage handling; activation filters based on disposition, range, visibility, hit points, target identity, proficiency, and embedded item possession; count resources using reactions, bonus actions, turn/round limits, spell slots, and ItemUses; roll-mode and bonus-card display controls; and disabled templates for ActivityUses and the special damage-triggered Item Macro path. An Item Macro can launch an embedded Activity by returning its UUID/reference or a supported structured Activity result.
 
 ## Important notes
 
@@ -21,6 +21,6 @@ The pack includes AC reactions; attack-roll bonuses including miss-only selector
 - Item-dependent examples use exact embedded Item names such as `Shield`, `Spellbook`, `Disguise Kit`, and `Wand of Magic Missiles`. Rename the reference or item if your actor uses a different name.
 - The `ItemUses.Wand of Magic Missiles` example requires that exact item and an available uses pool.
 - The success-phase reroll example changes an already-successful attack; use it only where a higher/lower result can matter under your rules or feature design.
-- The three entries beginning with **Template** are disabled intentionally. They cannot be considered plug-and-play until the specific embedded Activity or Item Macro is configured.
+- The two entries beginning with **Template** are disabled intentionally: ActivityUses cost configuration and damage-triggered Item Macro configuration. There is no longer a direct-Activity trigger template; use an Item Macro return value to start an Activity.
 - Activation conditions use the actual workflow context: `target` is the action recipient, `actor` the initiating actor, and `self` the actor owning the option. Range predicates require available tokens and use Midi-QoL's measurement behavior.
 - These are practical configuration examples, not rules text from a D&D book. Test them in a disposable world before using them in your live campaign.
