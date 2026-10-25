@@ -1,58 +1,21 @@
-## v0.10.9-beta.5 — skill proficiency activation shortcuts
+## v0.10.9 — release verification
 
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
 
-- [ ] On an External Reaction optional flag, set activation to `skill.prof`; roll a skill check the original workflow target is proficient in and verify the option is offered.
-- [ ] Repeat with an expertise skill; `skill.prof` should still pass.
-- [ ] Set activation to `skill.exp`; verify expertise passes, ordinary proficiency fails, and half proficiency (`0.5`) fails.
-- [ ] Change the workflow to a different skill the target is not proficient in; both conditions should fail based on that actual skill, not another proficient skill.
-- [ ] Verify a non-skill check never passes either shortcut.
-- [ ] Verify multi-skill Check Activities use the selected workflow skill when available, and fail closed if no specific skill can be identified.
-- [ ] Verify the condition fails closed if the original workflow target or skill cannot be resolved.
-- [ ] Retest the confirmed beta.4 `activation = damage` path and Activity return target suffixes (`actor` and no suffix).
+Verified in-world:
+- [x] Use `activation = damage` on an ItemMacro-backed option and confirm the reaction triggers when the target takes damage.
+- [x] Use `skill.prof` and `skill.exp` to filter reactions according to the original workflow target's proficiency and expertise in the skill actually being rolled.
+- [x] Return an Activity with the `actor` suffix and confirm it targets the original initiator without opening the module target picker.
+- [x] Return an Activity without a suffix, select a target, and confirm the Activity uses the selected target rather than the reactor.
 
-## v0.10.9-beta.4 — corrected Midi-QoL per-target damage hook
-
-- [ ] Cause a target to take positive HP damage through Midi-QoL; verify the debug log records `Received Midi-QoL isDamaged hook for External Reaction` with the affected token and damage amounts.
-- [ ] Confirm the target's `activation = damage` ItemMacro is prompted for positive HP damage and for positive Temporary HP damage.
-- [ ] Confirm a miss and a damage application where both HP and Temporary HP damage are zero do not prompt.
-- [ ] For an AOE, verify each target with positive applied damage is checked independently, and targets taking no damage are skipped.
-- [ ] Retest Hellish Rebuke Activity returns with `actor` and without a suffix; verify target selection remains correct.
-
-## v0.10.9-beta.3 — corrected post-damage hook
-
-- [ ] With `activation = damage`, cause a target to take positive HP or temporary HP damage through Midi-QoL; verify only that target is prompted via the then-implemented `midi-qol.damageApplied` listener (known not to fire in V14; beta.4 replaces it).
-- [ ] Confirm a miss and a hit that causes zero HP damage do not prompt.
-- [ ] Verify damage to multiple targets produces independent prompts only for targets with positive applied HP or temporary HP damage.
-- [ ] Retest Hellish Rebuke Activity return with `actor` and without a suffix; confirm both target flows remain correct.
-
-## v0.10.9-beta.2 — target damage triggers and explicit Activity targets
-
-Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib. These cases require live in-world verification.
-
-- [ ] Set `flags.external-reaction.optional.LHR.activation` to the exact value `damage` on an ItemMacro-backed option. When an incoming attack misses, confirm there is no prompt and no count/reaction is consumed.
-- [ ] Repeat with a hit that applies positive damage. Confirm only the actor that received damage is prompted after damage application.
-- [ ] Test immunity/resistance or a zero-damage target. Confirm no prompt when `both `damageItem.hpDamage` and `damageItem.tempDamage` are zero.
-- [ ] Test an AOE against multiple actors. Confirm each actor that actually takes damage is independently checked, and a target taking no damage is skipped.
-- [ ] In the reactor ItemMacro, return `Item.Hellish Rebuke.Activity.Save actor`. Confirm the Activity targets the original damage source/attacker and does not open the module target picker.
-- [ ] Return `Item.Hellish Rebuke.Activity.Save` with no suffix, select the source/attacker in the target picker, and confirm the Activity targets that selected token rather than the reactor.
-- [ ] Verify spell-slot spending, Activity usage, and the damage workflow remain correct after both target paths.
-
-## v0.10.9-beta.1 — Item Macro Activity returns, target options, and missed-attack damage
-
-Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL, and socketlib. These cases require in-world verification.
-
-- [ ] Return a full Activity UUID from a reactor Item Macro; the Activity starts exactly once on the reactor's owning client.
-- [ ] Return "Item.Test Item.Activity.Test Activity" and verify Item Test Item / Activity Test Activity resolves.
-- [ ] Return "Item.Test.Activity.Test" and verify the compact name form resolves.
-- [ ] Return unique partial item/activity names, e.g. "Item.Test Item.Activity.Test Act"; ambiguous partial matches must not select arbitrarily.
-- [ ] Return "Item.Test Item.Activity.Test Activity actor"; the Activity targets the original initiating actor and the module's target picker is skipped.
-- [ ] Repeat with suffix target and self; verify the original target and reactor token are selected respectively.
-- [ ] Test structured return { action: "activity", activity: "...", target: "actor" } and with targetMode: "self".
-- [ ] If an explicit actor/target token is unavailable on the reactor's scene, confirm the module reports the problem and does not silently open the target picker.
-- [ ] A normal UUID in flags.external-reaction.optional.NAME.activity.trigger still works without Item Macro return handling.
-- [ ] With damage.all = 1d4 and activation = damage, a missed weapon/spell attack does not prompt or consume the count; a hit still prompts and applies the bonus.
-- [ ] Fireball or another saving-throw-based damage workflow still offers eligible damage reactions because the guard only applies to attack workflows.
+Additional regression checks:
+- [ ] Verify a missed attack does not trigger a damage reaction or consume a count/reaction.
+- [ ] Verify hits that result in zero HP and Temporary HP damage do not trigger a damage reaction.
+- [ ] Verify AOE damage checks each target independently and skips targets that take no damage.
+- [ ] Verify a non-skill check cannot pass `skill.prof` or `skill.exp`.
+- [ ] Verify Check Activities with several associated skills use the workflow's selected skill, and fail closed if the skill cannot be identified.
+- [ ] Verify a missing original target fails closed for `skill.prof` and `skill.exp`.
+- [ ] Retest resource consumption, spell-slot spending, and the original damage workflow after a returned Activity is used.
 
 # External Reaction v0.10.8 — Release verification
 
