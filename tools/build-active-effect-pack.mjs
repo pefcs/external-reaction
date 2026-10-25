@@ -10,6 +10,7 @@ const sourceFiles = fs.readdirSync(source).filter(name => name.endsWith(".json")
 if (sourceFiles.length !== 38) throw new Error(`Expected 38 Active Effect examples, found ${sourceFiles.length}`);
 let disabledTemplates = 0;
 const ids = new Set();
+const displayOverrides = [];
 for (const name of sourceFiles) {
   const data = JSON.parse(fs.readFileSync(path.join(source, name), "utf8"));
   if (!data._key?.startsWith("!effects!") || data.type !== "base" || !Array.isArray(data.system?.changes)) {
@@ -22,7 +23,18 @@ for (const name of sourceFiles) {
     if (change.type !== "override" || !change.key.startsWith("flags.external-reaction.optional.")) {
       throw new Error(`Unexpected change config in ${name}: ${change.key}`);
     }
+    if (change.key.endsWith(".displayBonusRolls")) {
+      displayOverrides.push({ name: data.name, value: String(change.value) });
+    }
   }
+}
+const expectedDisplayOverrides = new Map([
+  ["Defense — Arcane Aegis", "true"],
+  ["Check — Private Oracle's Insight", "false"]
+]);
+if (displayOverrides.length !== expectedDisplayOverrides.size ||
+    displayOverrides.some(entry => expectedDisplayOverrides.get(entry.name) !== entry.value)) {
+  throw new Error("Only Arcane Aegis (true) and Private Oracle's Insight (false) should explicitly override displayBonusRolls: " + JSON.stringify(displayOverrides));
 }
 if (disabledTemplates !== 3) throw new Error(`Expected 3 disabled setup templates, found ${disabledTemplates}`);
 const manifest = JSON.parse(fs.readFileSync("module.json", "utf8"));
@@ -48,7 +60,15 @@ if (process.argv.includes("--verify")) {
     }
     const packedDisabled = packed.filter(data => data.disabled).length;
     if (packedDisabled !== 3) throw new Error(`Expected 3 disabled setup templates in pack, found ${packedDisabled}`);
-    console.log(`Verified native LevelDB pack: ${effectKeys.length} Active Effects, ${packedDisabled} disabled templates.`);
+    const packedDisplayOverrides = packed.flatMap(data => (data.system?.changes ?? [])
+      .filter(change => change.key.endsWith(".displayBonusRolls"))
+      .map(change => ({ name: data.name, value: String(change.value) })));
+    if (packedDisplayOverrides.length !== 2 ||
+        !packedDisplayOverrides.some(entry => entry.name === "Defense — Arcane Aegis" && entry.value === "true") ||
+        !packedDisplayOverrides.some(entry => entry.name === "Check — Private Oracle's Insight" && entry.value === "false")) {
+      throw new Error("The packed Active Effects do not contain exactly the two intended displayBonusRolls examples.");
+    }
+    console.log(`Verified native LevelDB pack: ${effectKeys.length} Active Effects, ${packedDisabled} disabled templates, 2 explicit displayBonusRolls examples.`);
   } finally {
     await db.close();
   }
