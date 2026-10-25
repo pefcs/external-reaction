@@ -17,6 +17,12 @@ External Reaction extends Midi-QoL-style optional reactions so eligible creature
 - Run macro source in an isolated async scope so local declarations such as `const externalReaction = data.externalReaction ?? {};` do not collide with the module's Midi-compatible context bindings.
 - Guard optional Item Macro flag lookup when Foundry V14 does not register the legacy `itemacro` scope; support DAE/DIME and the supported legacy macro storage.
 
+## Example Active Effects Compendium
+
+The **External Reaction — Practical Examples** compendium includes ready-to-use D&D 5e Active Effects for realistic combat, saving throws, checks, skill proficiency, damage bonuses, activation conditions, and resource costs. Most examples can be dragged directly onto an actor; three clearly labeled templates are disabled until their character-specific Activity or Item Macro details are configured.
+
+See [Active Effect Examples](docs/ACTIVE-EFFECT-EXAMPLES.md) for the entry list, setup notes, and coverage.
+
 ## Item Macro setup and execution context
 
 Keep the Item Macro command stored on the source Item through your supported DAE/DIME or legacy Item Macro mechanism. **Do not also assign the same command to a Midi-QoL On Use Macro stage** when External Reaction owns its invocation; otherwise it can run twice or recurse when it launches an Activity from that Item.
