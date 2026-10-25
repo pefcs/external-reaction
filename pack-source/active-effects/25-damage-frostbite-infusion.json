@@ -1,0 +1,117 @@
+{
+  "_key": "!effects!e000000000000025",
+  "_id": "e000000000000025",
+  "name": "Damage — Frostbite Infusion",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.FrostbiteInfusion.damage.cold.rsak",
+        "type": "override",
+        "value": "1d6",
+        "phase": "initial",
+        "_id": "c000000000000241",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.FrostbiteInfusion.activation",
+        "type": "override",
+        "value": "actor.disposition == \"friendly\" && target.disposition == \"hostile\" && CanSee",
+        "phase": "initial",
+        "_id": "c000000000000242",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.FrostbiteInfusion.count",
+        "type": "override",
+        "value": "spellslot 1",
+        "phase": "initial",
+        "_id": "c000000000000243",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.FrostbiteInfusion.countAlt",
+        "type": "override",
+        "value": "reaction",
+        "phase": "initial",
+        "_id": "c000000000000244",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.FrostbiteInfusion.criticalDamage",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000245",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.FrostbiteInfusion.displayBonusRolls",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000246",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": true,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": false,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> A caster spends a level 1+ spell slot and their reaction to add 1d6 Cold damage to a friendly ally's ranged spell attack. The bonus is a separate typed damage roll.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. If an option has a count requirement, that resource is spent when the option is accepted, according to External Reaction's count handling.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1792930887221,
+    "modifiedTime": 1792930887221
+  }
+}
