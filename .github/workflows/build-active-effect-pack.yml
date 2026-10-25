@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - test/active-effect-example-compendium
+      - main
     paths:
       - 'module.json'
       - 'README.md'
