@@ -2644,7 +2644,7 @@ Hooks.once("ready", () => {
   });
   game.modules.get(MODULE_ID).api = { socket };
   installAbilityCheckIntegration();
-  log("Ready; waiting for Midi-QoL attack, saving throw, ability-check, skill, damage, and AC bonus workflows with Midi-QoL activation conditions");
+  log("Ready; waiting for Midi-QoL attack, saving throw, ability-check, skill, tool, damage, and AC workflows with Midi-QoL activation conditions");
 });
 
 function getExternalItemMacroData(item) {
@@ -4237,7 +4237,7 @@ function installExternalToolCheckIdentifierHook() {
 function installAbilityCheckIntegration() {
   const prototype = CONFIG.Actor?.documentClass?.prototype;
   if (!prototype) {
-    warn("Could not find CONFIG.Actor.documentClass.prototype; external check and skill reactions are unavailable.");
+    warn("Could not find CONFIG.Actor.documentClass.prototype; external ability-check, skill, and tool reactions are unavailable.");
     return false;
   }
   let installed = false;
