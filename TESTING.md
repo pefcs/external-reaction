@@ -1,6 +1,14 @@
+## v0.10.9-beta.4 — corrected Midi-QoL per-target damage hook
+
+- [ ] Cause a target to take positive HP damage through Midi-QoL; verify the debug log records `Received Midi-QoL isDamaged hook for External Reaction` with the affected token and damage amounts.
+- [ ] Confirm the target's `activation = damage` ItemMacro is prompted for positive HP damage and for positive Temporary HP damage.
+- [ ] Confirm a miss and a damage application where both HP and Temporary HP damage are zero do not prompt.
+- [ ] For an AOE, verify each target with positive applied damage is checked independently, and targets taking no damage are skipped.
+- [ ] Retest Hellish Rebuke Activity returns with `actor` and without a suffix; verify target selection remains correct.
+
 ## v0.10.9-beta.3 — corrected post-damage hook
 
-- [ ] With `activation = damage`, cause a target to take positive HP or temporary HP damage through Midi-QoL; verify only that target is prompted via `midi-qol.damageApplied`.
+- [ ] With `activation = damage`, cause a target to take positive HP or temporary HP damage through Midi-QoL; verify only that target is prompted via `midi-qol.isDamaged`.
 - [ ] Confirm a miss and a hit that causes zero HP damage do not prompt.
 - [ ] Verify damage to multiple targets produces independent prompts only for targets with positive applied HP or temporary HP damage.
 - [ ] Retest Hellish Rebuke Activity return with `actor` and without a suffix; confirm both target flows remain correct.
