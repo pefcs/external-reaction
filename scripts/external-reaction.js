@@ -891,6 +891,10 @@ function getExternalWorkflowTargetActor(workflow, context = {}, referenceToken =
   // Prefer target collections directly on the original workflow. Do not substitute the
   // initiator just because the dispatcher had to fall back to its token for other conditions.
   addCandidates(workflow?.targets);
+  addCandidates(workflow?.target);
+  addCandidates(workflow?.targetToken);
+  addCandidates(workflow?.targetActorToken);
+  addCandidates(workflow?.targetActor);
   addCandidates(workflow?.hitTargets);
   addCandidates(workflow?.hitTargetsEC);
   addCandidates(workflow?.applicationTargets);
