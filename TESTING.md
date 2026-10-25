@@ -1,3 +1,10 @@
+## v0.10.9-beta.3 — corrected post-damage hook
+
+- [ ] With `activation = damage`, cause a target to take positive HP damage through Midi-QoL; verify only that target is prompted via `midi-qol.damageApplied`.
+- [ ] Confirm a miss and a hit that causes zero HP damage do not prompt.
+- [ ] Verify damage to multiple targets produces independent prompts only for targets with positive applied HP damage.
+- [ ] Retest Hellish Rebuke Activity return with `actor` and without a suffix; confirm both target flows remain correct.
+
 ## v0.10.9-beta.2 — target damage triggers and explicit Activity targets
 
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib. These cases require live in-world verification.
