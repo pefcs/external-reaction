@@ -1,0 +1,117 @@
+{
+  "_key": "!effects!e000000000000027",
+  "_id": "e000000000000027",
+  "name": "Damage — Arcane Overcharge",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.ArcaneOvercharge.damage.force.msak",
+        "type": "override",
+        "value": "1d6",
+        "phase": "initial",
+        "_id": "c000000000000261",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneOvercharge.activation",
+        "type": "override",
+        "value": "actor.disposition == \"friendly\" && target.disposition == \"hostile\" && CanSee",
+        "phase": "initial",
+        "_id": "c000000000000262",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneOvercharge.count",
+        "type": "override",
+        "value": "spellslot 2",
+        "phase": "initial",
+        "_id": "c000000000000263",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneOvercharge.countAlt",
+        "type": "override",
+        "value": "reaction",
+        "phase": "initial",
+        "_id": "c000000000000264",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneOvercharge.criticalDamage",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000265",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.ArcaneOvercharge.displayBonusRolls",
+        "type": "override",
+        "value": "true",
+        "phase": "initial",
+        "_id": "c000000000000266",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": true,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": false,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> A nearby spellcaster burns a level 2+ spell slot and their reaction to add 1d6 Force damage to a friendly ally's melee spell attack against a visible enemy.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. If an option has a count requirement, that resource is spent when the option is accepted, according to External Reaction's count handling.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1792930892679,
+    "modifiedTime": 1792930892679
+  }
+}
