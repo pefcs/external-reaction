@@ -14,6 +14,20 @@ on:
       - 'pack-source/**'
       - 'tools/**'
       - '.github/workflows/build-active-effect-pack.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'module.json'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'TESTING.md'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'pack-source/**'
+      - 'tools/**'
+      - '.github/workflows/build-active-effect-pack.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
