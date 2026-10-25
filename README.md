@@ -7,7 +7,7 @@ External Reaction extends Midi-QoL-style optional reactions so eligible creature
 
 ## Highlights in 0.10.0–0.10.9-beta.4
 
-- For ItemMacro options, `flags.external-reaction.optional.NAME.activation = damage` triggers only after Midi-QoL's per-target `midi-qol.isDamaged` event reports positive HP or temporary HP damage; an unused damage formula or missed attack does not trigger it.
+- For ItemMacro options, `flags.external-reaction.optional.NAME.activation = damage` uses Midi-QoL's per-target `midi-qol.isDamaged` event after target-specific damage is calculated but before HP is updated. It only prompts when positive HP or Temporary HP damage is present; an unused damage formula or missed attack does not trigger it.
 - Pass targeted Activity use through Midi-QoL's explicit `midiOptions.targetUuids`, so an `actor` suffix and a target chosen in the module picker target the intended token.
 - Trigger reactions from workflow-event activation conditions such as `cast`, `attack`, save/check/skill events, and related activity flags.
 - Invoke an Item Macro at a selected Midi-QoL workflow pass, with structured spell-slot and ItemUses/ActivityUses resource receipts.
