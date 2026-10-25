@@ -818,6 +818,106 @@ function normalizeActorIdentityComparisons(expression) {
  * checks/skills, and the affected target for damage. This explicit split avoids ambiguous
  * target semantics in third-party reactions.
  */
+function getExternalSkillKeyFromValue(value) {
+  const skills = CONFIG?.DND5E?.skills ?? {};
+  if (typeof value === "string") {
+    const key = value.trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(skills, key) ? key : null;
+  }
+  if (!value || typeof value !== "object") return null;
+  for (const field of ["skill", "skillId", "skillKey", "key", "id", "identifier", "slug"]) {
+    const key = getExternalSkillKeyFromValue(value[field]);
+    if (key) return key;
+  }
+  return null;
+}
+
+function getExternalCheckAssociatedValues(activity) {
+  const associated = activity?.check?.associated ?? activity?.check?.skills ?? null;
+  if (associated === null || associated === undefined) return [];
+  if (typeof associated === "string") return [associated];
+  if (Array.isArray(associated)) return associated;
+  if (associated instanceof Set) return [...associated];
+  if (typeof associated?.values === "function") {
+    try { return [...associated.values()]; } catch (_) { /* Fall through to iterable support. */ }
+  }
+  if (typeof associated?.[Symbol.iterator] === "function") {
+    try { return [...associated]; } catch (_) { /* An unknown collection is not a skill list. */ }
+  }
+  return [];
+}
+
+function getExternalWorkflowSkillKey(workflow, context = {}) {
+  const activity = context?.activity ?? workflow?.activity ?? null;
+  const candidates = [
+    context?.skillKey, context?.skillId, context?.skill,
+    context?.check?.skill, context?.check?.skillId,
+    workflow?.skill, workflow?.skillId, workflow?.skillKey,
+    workflow?.check?.skill, workflow?.check?.skillId, workflow?.check?.skillKey,
+    workflow?.options?.skill, workflow?.rollOptions?.skill, workflow?.rollData?.skill,
+    workflow?.checkRoll?.options?.skill,
+    workflow?.saveItem?.flags?.["midi-qol"]?.overTimeSkillRoll,
+    workflow?.item?.flags?.["midi-qol"]?.overTimeSkillRoll,
+    activity?.check?.skill, activity?.check?.skillId
+  ];
+  for (const candidate of candidates) {
+    const key = getExternalSkillKeyFromValue(candidate);
+    if (key) return key;
+  }
+
+  // D&D 5e 6.x exposes Check Activity associations as a Set. Only infer the skill
+  // from that configuration when there is exactly one association; for multi-skill
+  // Activities the actual selected skill must come from the active workflow context.
+  const associated = getExternalCheckAssociatedValues(activity);
+  if (associated.length === 1) return getExternalSkillKeyFromValue(associated[0]);
+  return null;
+}
+
+function getExternalWorkflowTargetActor(workflow, context = {}, referenceToken = null) {
+  const candidates = [];
+  const addCandidates = value => {
+    if (value === null || value === undefined) return;
+    if (Array.isArray(value)) { candidates.push(...value); return; }
+    if (value instanceof Set) { candidates.push(...value); return; }
+    if (typeof value !== "string" && value && typeof value[Symbol.iterator] === "function"
+        && !value.actor && !value.document && !value.documentName && !value.system) {
+      try { candidates.push(...value); return; } catch (_) { /* Treat it as a single candidate. */ }
+    }
+    candidates.push(value);
+  };
+
+  addCandidates(context?.skillTargetToken);
+  addCandidates(context?.originalTargetToken);
+  // Prefer target collections directly on the original workflow. Do not substitute the
+  // initiator just because the dispatcher had to fall back to its token for other conditions.
+  addCandidates(workflow?.targets);
+  addCandidates(workflow?.hitTargets);
+  addCandidates(workflow?.hitTargetsEC);
+  addCandidates(workflow?.applicationTargets);
+  addCandidates(context?.originalTargets);
+  addCandidates(context?.targets);
+  addCandidates(context?.target);
+  addCandidates(context?.targetToken);
+
+  const actionActorToken = normalizeToken(context?.actionActorToken) ?? getWorkflowToken(workflow);
+  const actionActorUuid = actionActorToken?.actor?.uuid ?? actionActorToken?.document?.actor?.uuid
+    ?? context?.actionActor?.uuid ?? workflow?.actor?.uuid ?? null;
+  for (const candidate of [context?.actionTargetToken, referenceToken]) {
+    const token = normalizeToken(candidate);
+    const candidateActor = token?.actor ?? token?.document?.actor
+      ?? (candidate?.system?.skills ? candidate : null);
+    if (candidateActor && candidateActor.uuid !== actionActorUuid) candidates.push(candidate);
+  }
+
+  for (const candidate of candidates) {
+    const token = normalizeToken(candidate);
+    const actor = token?.actor ?? token?.document?.actor
+      ?? (candidate?.system?.skills ? candidate : null);
+    if (actor?.system?.skills) return actor;
+  }
+  return null;
+}
+
 function getExternalWorkflowEventFlags(workflow, context = {}) {
   const item = workflow?.item ?? workflow?.activity?.item ?? context.item ?? null;
   const activity = workflow?.activity ?? context.activity ?? null;
@@ -829,7 +929,12 @@ function getExternalWorkflowEventFlags(workflow, context = {}) {
   const isCast = context.cast === true || actionKind === "cast" || item?.type === "spell" || activityType === "cast";
   const isSave = context.save === true || actionKind === "save" || activityType === "save" || actionType === "save";
   const isCheck = context.check === true || actionKind === "check" || actionKind === "skill" || activityType === "check" || actionType === "check";
-  const isSkill = context.skill === true || actionKind === "skill" || Boolean(activity?.check?.skills?.length || workflow?.check?.skill || workflow?.skill);
+  const associatedValues = getExternalCheckAssociatedValues(activity);
+  const hasSkillAssociation = associatedValues.some(value => !!getExternalSkillKeyFromValue(value));
+  const isSkill = context.skill === true || actionKind === "skill" || hasSkillAssociation
+    || !!getExternalSkillKeyFromValue(context.skill) || !!getExternalSkillKeyFromValue(context.skillKey)
+    || !!getExternalSkillKeyFromValue(context.skillId)
+    || Boolean(activity?.check?.skills?.length || workflow?.check?.skill || workflow?.skill);
   const damageActivity = activity?.damage;
   // An Activity having a damage formula does not mean damage is occurring now.
   // The damage event flag is true only when the current context is an actual damage stage.
@@ -911,12 +1016,59 @@ function isExternalItemMacroTrigger(flagData) {
   return rawTrigger.split(",")[0]?.trim().toLowerCase() === "itemmacro";
 }
 
+function evaluateExternalSkillActivationShortcut(rawExpression, workflow, context = {}, referenceToken = null) {
+  const condition = typeof rawExpression === "string" ? rawExpression.trim().toLowerCase() : "";
+  if (condition !== "skill.prof" && condition !== "skill.exp") return null;
+
+  const activity = context?.activity ?? workflow?.activity ?? null;
+  const item = context?.item ?? workflow?.item ?? activity?.item ?? null;
+  const actionType = context?.actionType ?? activity?.actionType ?? activity?.system?.actionType ?? item?.system?.actionType;
+  const eventFlags = getExternalWorkflowEventFlags(workflow, { ...context, actionType, activity, item });
+  const skillKey = getExternalWorkflowSkillKey(workflow, context);
+  const activityType = String(activity?.type ?? activity?.system?.type ?? "").toLowerCase();
+  const actionKind = String(context?.actionKind ?? "").toLowerCase();
+  const isSkillCheck = actionKind === "skill" || context?.skill === true || context?.skillCheck === true
+    || eventFlags.skill || (activityType === "check" && !!skillKey);
+  if (!isSkillCheck) {
+    debug("Skill proficiency activation shorthand rejected because the workflow is not a skill check.", {
+      condition, actionKind, activityType, skillKey
+    });
+    return false;
+  }
+  if (!skillKey) {
+    debug("Skill proficiency activation shorthand rejected because the workflow skill could not be identified.", {
+      condition, actionKind, activityType, workflowSkill: workflow?.skill, checkSkill: workflow?.check?.skill,
+      associatedSkills: getExternalCheckAssociatedValues(activity)
+    });
+    return false;
+  }
+
+  const targetActor = getExternalWorkflowTargetActor(workflow, context, referenceToken);
+  if (!targetActor) {
+    debug("Skill proficiency activation shorthand rejected because the original workflow target could not be resolved.", {
+      condition, skill: skillKey, workflowId: workflow?.uuid ?? workflow?.id ?? null
+    });
+    return false;
+  }
+
+  // D&D 5e 6.x skill proficiency values are 0 (none), 0.5 (half proficiency),
+  // 1 (proficiency), and 2 (expertise). Expertise also satisfies skill.prof.
+  const skillValue = Number(targetActor.system?.skills?.[skillKey]?.value ?? 0);
+  const allowed = Number.isFinite(skillValue) && (condition === "skill.prof" ? skillValue >= 1 : skillValue >= 2);
+  debug("Evaluated skill proficiency activation shorthand.", {
+    condition, target: targetActor.name, skill: skillKey, proficiencyValue: skillValue, allowed
+  });
+  return allowed;
+}
+
 async function evaluateExternalActivation(reactor, workflow, referenceToken, context = {}, midi = game.modules.get("midi-qol")?.api) {
   const rawExpression = reactor?.flagData?.activation;
   if (rawExpression === undefined || rawExpression === null || rawExpression === "") return true;
   if (rawExpression === true) return true;
   if (rawExpression === false) return false;
   if (typeof rawExpression === "string" && rawExpression.trim() === "") return true;
+  const skillProficiencyActivation = evaluateExternalSkillActivationShortcut(rawExpression, workflow, context, referenceToken);
+  if (skillProficiencyActivation !== null) return skillProficiencyActivation;
   // Normalize the user-friendly negated-comparison shorthand before calling Midi's
   // evaluator, while leaving the standard JavaScript expression grammar intact.
   const expression = typeof rawExpression === "string"
