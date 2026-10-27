@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Restore direct Activity trigger documentation and examples
+
+- Clarify that a non-`ItemMacro` value in `flags.external-reaction.optional.NAME.activity.trigger` can resolve and launch an embedded D&D 5e Activity directly after its reaction is accepted.
+- Keep the Item Macro route for conditional or dynamic Activity selection, where the macro returns an Activity UUID/reference or a supported structured result.
+- Restore the disabled **Template — Direct Activity Trigger (Configure First)** compendium example and add direct-trigger configuration recipes and regression checks.
+- Expand the example compendium from 39 to 40 entries, with three disabled setup templates.
+
 ## 0.11.0 — Self-only activation and tool-check support
 
 - Add the bare `self` activation predicate for self-only roll features while preserving `actor == self` / `target == self` identity comparisons and `self.*` actor data access.

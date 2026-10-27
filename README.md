@@ -1,6 +1,6 @@
 # External Reaction
 
-External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. External Reaction Item Macros can also launch embedded D&D 5e Activities by returning an Activity reference or structured result.
+External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. A reaction can launch a fixed embedded D&D 5e Activity directly through `activity.trigger`, or use an Item Macro that returns an Activity reference or structured result when conditional logic or dynamic choice is needed.
 
 **Current version: 0.11.0**  
 **Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
@@ -20,7 +20,7 @@ External Reaction extends Midi-QoL-style optional reactions so eligible creature
 
 ## Example Active Effects Compendium
 
-The **External Reaction — Practical Examples** compendium includes ready-to-use D&D 5e Active Effects for realistic combat, saving throws, checks, skill proficiency, damage bonuses, activation conditions, and resource costs. Most examples can be dragged directly onto an actor; two templates are disabled until their character-specific ActivityUses or damage-triggered Item Macro details are configured. To launch an Activity, use the Item Macro workflow path and return the Activity reference from the macro—do not put the Activity UUID directly in `activity.trigger`. Most examples leave `displayBonusRolls` unset so Midi-QoL's own setting is respected, with two entries retained to demonstrate explicit overrides.
+The **External Reaction — Practical Examples** compendium includes ready-to-use D&D 5e Active Effects for combat, saves, checks, skill proficiency, tool checks, damage, activation conditions, and resource costs. Most examples can be dragged directly onto an actor; three setup templates are disabled until you configure an ActivityUses cost, a direct Activity reference, or a damage-triggered Item Macro. For a fixed Activity, set `activity.trigger` to its UUID or supported Item/Activity reference. For an Activity chosen by logic in a macro, use the `ItemMacro` trigger and return the Activity reference from the macro. Most examples leave `displayBonusRolls` unset so Midi-QoL's own setting is respected, with two entries retained to demonstrate explicit overrides.
 
 See [Active Effect Examples](docs/ACTIVE-EFFECT-EXAMPLES.md) for the entry list, setup notes, and coverage.
 
@@ -28,7 +28,7 @@ See [Active Effect Examples](docs/ACTIVE-EFFECT-EXAMPLES.md) for the entry list,
 
 Keep the Item Macro command stored on the source Item through your supported DAE/DIME or legacy Item Macro mechanism. **Do not also assign the same command to a Midi-QoL On Use Macro stage** when External Reaction owns its invocation; otherwise it can run twice or recurse when it launches an Activity from that Item.
 
-Configure the granting Active Effect with `flags.external-reaction.optional.NAME.activity.trigger = ItemMacro` to use the default `postActiveEffects` pass, or `ItemMacro, postAttackRoll` to select another workflow pass. To start an Activity, have the stored macro return its Activity UUID/reference (or a structured Activity result); the `activity.trigger` flag selects the Item Macro, not the Activity itself.
+When using the Item Macro route, configure the granting Active Effect with `flags.external-reaction.optional.NAME.activity.trigger = ItemMacro` to use the default `postActiveEffects` pass, or `ItemMacro, postAttackRoll` to select another workflow pass. In that mode, have the stored macro return its Activity UUID/reference (or a structured Activity result); `activity.trigger` selects the macro and pass. For a fixed Activity that does not need macro logic, set `activity.trigger` directly to the Activity UUID or a supported Item/Activity reference instead.
 
 The Item Macro executes on the selected reactor recipient's client, and the original workflow waits for its returned value. Document references in the context are re-resolved on that client. The `workflow` value is a **serializable snapshot**, not a live Midi-QoL Workflow instance, so code should not expect live Workflow methods or mutate the initiating workflow object directly. Actor APIs such as `actor.rollAbilityCheck()` run on the reactor's client and can show roll UI there.
 

@@ -1,0 +1,97 @@
+{
+  "_key": "!effects!e000000000000037",
+  "_id": "e000000000000037",
+  "name": "Template — Direct Activity Trigger (Configure First)",
+  "type": "base",
+  "img": "systems/dnd5e/icons/svg/documents/active-effect.svg",
+  "system": {
+    "changes": [
+      {
+        "key": "flags.external-reaction.optional.DirectActivityTemplate.save.fail.all",
+        "type": "override",
+        "value": "1d4",
+        "phase": "initial",
+        "_id": "c000000000000371",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.DirectActivityTemplate.activity.trigger",
+        "type": "override",
+        "value": "Item.<Item Name>.Activity.<Activity Name>",
+        "phase": "initial",
+        "_id": "c000000000000372",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.DirectActivityTemplate.activation",
+        "type": "override",
+        "value": "target == self",
+        "phase": "initial",
+        "_id": "c000000000000373",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      },
+      {
+        "key": "flags.external-reaction.optional.DirectActivityTemplate.count",
+        "type": "override",
+        "value": "reaction",
+        "phase": "initial",
+        "_id": "c000000000000374",
+        "conditions": "{}",
+        "replacement": "",
+        "priority": null
+      }
+    ],
+    "origin": {
+      "actor": null,
+      "behavior": null,
+      "effect": null,
+      "item": null,
+      "message": null
+    },
+    "conditions": "{}",
+    "magical": false,
+    "rider": {
+      "statuses": []
+    }
+  },
+  "disabled": true,
+  "start": null,
+  "duration": {
+    "value": null,
+    "units": "seconds",
+    "expiry": null,
+    "expired": false
+  },
+  "description": "<p><strong>Scenario:</strong> DISABLED TEMPLATE. Demonstrates launching one known embedded Activity directly, without an Item Macro, after the reactor accepts an optional reaction to a failed saving throw. Before enabling, replace <code>Item.&lt;Item Name&gt;.Activity.&lt;Activity Name&gt;</code> with a full Activity UUID or supported Item/Activity reference on an Item owned by the reactor Actor. Change the <code>save.fail.all</code> selector and activation condition to match the feature you are building.</p><p><strong>Setup:</strong> Drag this Active Effect onto the actor who should own the External Reaction option. All changes use Override mode. This template uses the actor's Reaction as the resource cost. For dynamic Activity selection or conditional logic, use the Item Macro return-value path instead.</p>",
+  "origin": null,
+  "tint": "#ffffff",
+  "transfer": true,
+  "statuses": [],
+  "showIcon": 1,
+  "folder": null,
+  "flags": {
+    "dae": {
+      "disableCondition": "",
+      "expiryMode": "default",
+      "macroRepeat": "none",
+      "disableIncapacitated": false,
+      "specialDuration": []
+    },
+    "core": {
+      "overlay": false
+    }
+  },
+  "_stats": {
+    "coreVersion": "14.369",
+    "systemId": "dnd5e",
+    "systemVersion": "6.0.6",
+    "createdTime": 1793121600000,
+    "modifiedTime": 1793121600000
+  }
+}

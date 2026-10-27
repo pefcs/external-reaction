@@ -3,7 +3,7 @@
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib. Keep these cases unchecked until each is verified in-world.
 
 - [ ] Confirm the installable release ZIP includes `packs/examples` and all three user-facing docs in `docs/`.
-- [ ] Confirm the compiled **External Reaction — Practical Examples** compendium has 39 Active Effects, including both new Tool entries.
+- [ ] Confirm the compiled **External Reaction — Practical Examples** compendium has 40 Active Effects, including both Tool entries and the direct Activity template.
 - [ ] Drag **Tool — Artisan's Precision** onto an Actor; the Actor's own proficient tool checks offer +1d4, at most once per turn. Other Actors' checks must not prompt this self-only option.
 - [ ] Confirm `activation = self` is true only when the option-owning Actor performs the relevant roll; `actor == self`, `target == self`, and `self.*` item/data access retain their previous meanings.
 - [ ] Confirm `activation = tool` is true for tool checks, but false for skill and ability checks.
@@ -26,7 +26,7 @@ Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and 
 - [ ] Test Trained Reflexes and Expert's Edge with proficient, half-proficient, and expertise skill checks.
 - [ ] Test typed damage examples with Midi-QoL and verify each extra DamageRoll uses the configured damage type.
 - [ ] Test count resources (reaction, bonus action, each-turn, each-round, spell slot, ItemUses) and confirm declined/cancelled prompts do not unexpectedly spend resources.
-- [ ] Confirm the two Template entries are disabled (ActivityUses and damage-triggered Item Macro) and their descriptions explain the required configuration. There is no direct embedded-Activity trigger template.
+- [ ] Confirm the three Template entries are disabled (ActivityUses cost, direct Activity trigger, and damage-triggered Item Macro) and each description explains what to configure before enabling.
 - [ ] Confirm all example Active Effects can be removed cleanly from the test character.
 
 ## v0.10.9 — release verification
@@ -82,7 +82,7 @@ Test in a disposable world. These checks cover Item Macro source resolution and 
 - [ ] If an Item's legacy `itemacro` flag scope is not registered/active, Item Macro lookup does not throw or block workflow dispatch; DAE/DIME `flags.dae.macro` still resolves normally, and missing macros fail gracefully.
 - [ ] With `activation = cast`, a cantrip spell Activity triggers at the explicitly configured `preAttackRoll` stage; confirm the test dialog reports `preAttackRoll`.
 - [ ] With no External Reaction `itemMacro` optional configured, ordinary Activities still enter their normal workflow; the `midi-qol.preTargeting` dispatcher-installation hook must not abort item use.
-- [ ] Do not configure a direct Activity UUID in `activity.trigger`; launch an Activity by returning its reference from the Item Macro instead.
+- [ ] For the Item Macro route, set `activity.trigger = ItemMacro` and return the Activity reference from the macro; do not put the Activity UUID in that `ItemMacro` dispatch value. Non-`ItemMacro` `activity.trigger` values are supported for direct Activity use and are tested separately below.
 - [ ] `activity.trigger = itemMacro` with no pass dispatches at `postActiveEffects`, as External Reaction's configured default for a bare trigger. No prompt should appear before then.
 - [ ] `activity.trigger = "ItemMacro, postAttackRoll"` and the equivalent separate `activity.macroPass = postAttackRoll` both prompt only after the attack roll has been adjudicated.
 - [ ] At `postAttackRoll`, the macro sees the completed attack roll and known hit/miss result; if it returns `"cancel"`, the attack roll remains visible but the normal damage roll and later processing are aborted.
@@ -435,6 +435,17 @@ Use a third-party reactor and an attack where the raw attack total is below the 
 - [ ] Repeat with `ac.hit` and `ac` to confirm generic selector fallback behavior remains correct.
 
 
+## Direct Activity triggers (without an Item Macro)
+
+Test in a disposable Foundry V14 world. The trigger reference must resolve to an Activity embedded on an Item owned by the reactor Actor.
+
+- [ ] Configure `activity.trigger = Item.<Item Name>.Activity.<Activity Name>` alongside a selector such as `save.fail.all = 1d4`. Confirm the eligible reaction appears on the right failed save; accepting it modifies the roll and then launches the referenced Activity.
+- [ ] Confirm a full Activity UUID and each documented Item/Activity reference form resolve to the intended owned Activity. Unique partial names resolve; ambiguous or missing references fail gracefully with a useful notification/diagnostic.
+- [ ] Confirm no Item Macro is needed for a fixed direct Activity trigger, and no macro pass is applied to the direct reference.
+- [ ] Test a direct-target Activity and an area/template Activity. The target picker/template placement should follow the Activity configuration, and the user's pre-existing targets should be restored after use.
+- [ ] Verify the Activity is rejected when it belongs to a different Actor or is not embedded on the reactor's Actor.
+- [ ] Confirm the three disabled setup templates (ActivityUses cost, direct Activity trigger, damage-triggered Item Macro) can each be configured, enabled, used in a test world, and then removed cleanly.
+
 ## Activity return values from Item Macros (supported path)
 
 Test in a disposable Foundry V14 world. The Activity must belong to an Item embedded on the reactor's Actor. Configure the granting Active Effect's `flags.external-reaction.optional.NAME.activity.trigger` to invoke the reactor's stored Item Macro; that field selects the Item Macro/pass and must not contain the Activity UUID itself.
@@ -450,7 +461,7 @@ Test in a disposable Foundry V14 world. The Activity must belong to an Item embe
 - [ ] **Structured cancellation:** return `{ action: "activity", activityUuid: "...", cancelOriginal: true }`. Confirm the Activity runs, then the remaining original workflow is aborted.
 - [ ] **Continue/cancel:** return `"continue"` / `false` and verify the original workflow proceeds; return `"cancel"` / `true` and verify later workflow processing aborts without launching an Activity.
 - [ ] **Missing Activity / macro error:** confirm a missing source Item, missing Item Macro, invalid Activity reference, or Item Macro error logs a useful message and does not crash or silently reroute the original workflow.
-- [ ] **No direct-UUID config:** keep the Activity UUID in the Item Macro's return value, not in `activity.trigger`.
+- [ ] **Item Macro dispatch config:** when `activity.trigger` starts with `ItemMacro`, keep the Activity UUID in the macro's return value rather than in the dispatcher value. Direct Activity references are valid when `activity.trigger` does not start with `ItemMacro`.
 
 ## v0.9.1 — Count concurrency and actor identity regressions
 

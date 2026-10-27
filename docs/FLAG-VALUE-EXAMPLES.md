@@ -246,9 +246,24 @@ The count fields control availability and resource consumption. Add them to the 
 
 Use the exact literal values shown for special count formats. A `spellslot X` selector is cancelled if the user cancels the picker; no slot is spent and the optional reaction is not applied. If both count fields specify spell slots, the higher minimum controls which slots can be selected.
 
-## 10. Start a D&D 5e Activity from an Item Macro return value
+## 10. Trigger an embedded D&D 5e Activity directly
 
-The supported route for launching a D&D 5e Activity from an External Reaction is to invoke an Item Macro and return the Activity reference from that macro. The Activity must be embedded in an Item on the reactor's Actor. Do **not** set `activity.trigger` directly to an Activity UUID; that field selects the Item Macro to run and the workflow pass.
+Use this route when the reaction always launches one known Activity and does not need Item Macro logic. Put a full Activity UUID or a supported Item/Activity reference in `activity.trigger`. The Activity must belong to an embedded Item on the reactor's Actor. The normal selector flags determine when the option is offered; the Activity launches after the player accepts the reaction.
+
+| Flag | Type | Value |
+|---|---|---|
+| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `Item.<Item Name>.Activity.<Activity Name>` — Resolve and launch the named Activity directly. Replace both placeholders with the reactor's actual Item and Activity names. |
+| `flags.external-reaction.optional.NAME.activity.trigger` | Override | `Actor.<actorId>.Item.<itemId>.Activity.<activityId>` — Alternative full Activity UUID reference. |
+| `flags.external-reaction.optional.NAME.save.fail.all` | Override | `1d4` — Example reaction selector: offer the option when the save initially fails and add 1d4 if accepted. Change this selector to the event/phase relevant to your feature. |
+| `flags.external-reaction.optional.NAME.count` | Override | `reaction` — Require and spend the reactor's Reaction when accepted. |
+
+Other supported references include `Item.<Item Name>.<Activity Name>`, `ItemUUID::ActivityName`, `ItemName::ActivityName`, and a unique Activity name. See the [Technical Reference](REFERENCE.md#trigger-an-embedded-activity-directly) for resolution details and target-selection behavior.
+
+Choose the Item Macro route in Section 11 instead when the Activity needs conditional selection, custom checks, or other macro logic. In that case, start `activity.trigger` with `ItemMacro` and return the Activity reference from the macro; the UUID is not placed directly in the Item Macro dispatch value.
+
+## 11. Start a D&D 5e Activity from an Item Macro return value
+
+This section covers the Item Macro route for launching a D&D 5e Activity from an External Reaction. The Activity must be embedded in an Item on the reactor's Actor. In this route, `activity.trigger` starts with `ItemMacro` and selects the macro/pass; have the macro return the Activity reference. For a fixed Activity that does not need macro logic, see [Section 10](#10-trigger-an-embedded-dd-5e-activity-directly).
 
 ### Configure the granting Active Effect
 
@@ -294,7 +309,7 @@ Supported targeting modes are `actor` (the Actor that initiated the original wor
 
 Cancellation does not roll back earlier rolls, consumed resources, HP changes, or effects. Pick the earliest macro pass that provides the context you need, and test the specific Activity and pass in a disposable world.
 
-## 11. Bonus-roll display and roll mode
+## 12. Bonus-roll display and roll mode
 
 | Flag | Type | Value |
 |---|---|---|
@@ -307,7 +322,7 @@ Cancellation does not roll back earlier rolls, consumed resources, HP changes, o
 
 If `displayBonusRolls` is absent, External Reaction consults Midi-QoL's saved settings/API snapshot and then its initialized default. If `rollMode` is absent, Midi-QoL's `core.messageMode` behavior and Foundry's core roll-mode setting are used where applicable. Roll visibility cannot be retroactively changed for messages that have already been seen.
 
-## 12. Roll-value operators and macros
+## 13. Roll-value operators and macros
 
 These are example **values** for supported roll-modifier flags such as `attack.*`, `save.*`, `check.*`, `skill.*`, `damage.*`, and `ac`. Not every value makes sense for every flag family: reroll operators need an existing roll, and typed damage selectors should be formulas or macros that return a formula/roll.
 
@@ -333,9 +348,9 @@ These are example **values** for supported roll-modifier flags such as `attack.*
 | `flags.external-reaction.optional.NAME.attack.all` | Override | `Macro.MyMacro` — Invoke a world macro named MyMacro through Midi-QoL's workflow macro system. |
 | `flags.external-reaction.optional.NAME.attack.all` | Override | `function.myRegisteredFunction` — Invoke a function registered with Midi-QoL; this is not a way to call arbitrary global functions. |
 
-**Unsupported:** `ActivityMacro` is intentionally not supported as a roll value. To launch a D&D 5e Activity, configure the External Reaction Item Macro path (`activity.trigger = ItemMacro, <pass>`) and return the Activity UUID/reference from that Item Macro. Macro names/identifiers must match what Midi-QoL can resolve in the installed version.
+**Unsupported:** `ActivityMacro` is intentionally not supported as a roll value. To launch a D&D 5e Activity, either set `activity.trigger` directly to a supported Activity reference (fixed Activity, no macro required) or use the Item Macro path (`activity.trigger = ItemMacro, <pass>`) and return the Activity UUID/reference from that macro. Macro names/identifiers must match what Midi-QoL can resolve in the installed version.
 
-## 13. Combining fields into practical options
+## 14. Combining fields into practical options
 
 The following are small recipes. Each row is still a separate Active Effect change.
 
@@ -374,7 +389,7 @@ The following are small recipes. Each row is still a separate Active Effect chan
 | `flags.external-reaction.optional.CounterSpell.activation` | Override | `cast && actor != self && CanSee` — Only consider a visible cast initiated by another Actor. |
 | `flags.external-reaction.optional.CounterSpell.count` | Override | `reaction` — Require and expend the reactor's Reaction when accepted. |
 
-The Item Macro—not the Active Effect—chooses which embedded Activity to use. Have the macro return an Activity reference such as `Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId>`, or return a structured result such as `{ action: "activity", activityUuid: "...", cancelOriginal: true }`. The `activity.trigger` field is used to select the Item Macro and workflow pass; do not put the Activity UUID directly in this field. See Section 9 below for full setup steps and target-selection options.
+When using the Item Macro route, the macro—not the Active Effect—chooses which embedded Activity to use. Have the macro return an Activity reference such as `Actor.<reactorActorId>.Item.<itemId>.Activity.<activityId>`, or return a structured result such as `{ action: "activity", activityUuid: "...", cancelOriginal: true }`. Here, `activity.trigger` selects the Item Macro and workflow pass; do not put the Activity UUID in the Item Macro dispatch value. See [Section 11](#11-start-a-dd-5e-activity-from-an-item-macro-return-value) below for the full Item Macro setup steps and target-selection options.
 
 ### Example E — Spend a spell slot for an optional bonus
 
@@ -427,7 +442,7 @@ The example tool identifier is `thief`; replace it with the identifier used by y
 
 This feature invokes an Item Macro at a chosen Midi-QoL workflow pass. It is separate from using the `ItemMacro` string as a normal roll value. Set `flags.external-reaction.optional.NAME.activity.trigger = ItemMacro` (default `postActiveEffects`) or `ItemMacro, <pass>`; use `activity.macroPass` to set the pass separately. The macro must be stored on the Item resolved from the granting Active Effect, and the same command must not also be registered as a Midi-QoL On Use Macro.
 
-To start an embedded Activity, **return** its Activity UUID/reference or a supported structured result from the macro; do not place the Activity UUID directly in `activity.trigger`. For example:
+To start an embedded Activity with this route, **return** its Activity UUID/reference or a supported structured result from the macro. For example:
 
 ```js
 const macroArgs = Array.isArray(args) ? args : [];

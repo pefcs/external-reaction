@@ -7,7 +7,7 @@ const source = path.resolve("pack-source/active-effects");
 const destination = path.resolve("packs/examples");
 if (!fs.existsSync(source)) throw new Error("Active Effect source directory was not found.");
 const sourceFiles = fs.readdirSync(source).filter(name => name.endsWith(".json")).sort();
-if (sourceFiles.length !== 39) throw new Error(`Expected 39 Active Effect examples, found ${sourceFiles.length}`);
+if (sourceFiles.length !== 40) throw new Error(`Expected 40 Active Effect examples, found ${sourceFiles.length}`);
 let disabledTemplates = 0;
 const ids = new Set();
 const displayOverrides = [];
@@ -29,6 +29,28 @@ for (const name of sourceFiles) {
       displayOverrides.push({ name: data.name, value: String(change.value) });
     }
   }
+}
+
+const expectedDirectActivityTemplate = {
+  name: "Template — Direct Activity Trigger (Configure First)",
+  triggerKey: "flags.external-reaction.optional.DirectActivityTemplate.activity.trigger",
+  requiredKeys: [
+    "flags.external-reaction.optional.DirectActivityTemplate.save.fail.all",
+    "flags.external-reaction.optional.DirectActivityTemplate.activity.trigger",
+    "flags.external-reaction.optional.DirectActivityTemplate.activation",
+    "flags.external-reaction.optional.DirectActivityTemplate.count"
+  ]
+};
+const directActivityTemplate = sourceEffects.find(entry => entry.name === expectedDirectActivityTemplate.name);
+if (!directActivityTemplate) throw new Error("Missing direct Activity trigger example template.");
+if (!directActivityTemplate.disabled) throw new Error("The direct Activity trigger template must remain disabled until configured.");
+const directActivityChanges = new Map(directActivityTemplate.system.changes.map(change => [change.key, change.value]));
+for (const key of expectedDirectActivityTemplate.requiredKeys) {
+  if (!directActivityChanges.has(key)) throw new Error("Direct Activity trigger template is missing change: " + key);
+}
+const directActivityValue = String(directActivityChanges.get(expectedDirectActivityTemplate.triggerKey) ?? "").trim();
+if (!directActivityValue || directActivityValue.toLowerCase().startsWith("itemmacro")) {
+  throw new Error("The direct Activity template must contain a non-empty direct Activity reference, not an ItemMacro dispatcher.");
 }
 
 const expectedToolExamples = new Map([
@@ -61,7 +83,7 @@ if (displayOverrides.length !== expectedDisplayOverrides.size ||
     displayOverrides.some(entry => expectedDisplayOverrides.get(entry.name) !== entry.value)) {
   throw new Error("Only Arcane Aegis (true) and Private Oracle's Insight (false) should explicitly override displayBonusRolls: " + JSON.stringify(displayOverrides));
 }
-if (disabledTemplates !== 2) throw new Error(`Expected 2 disabled setup templates, found ${disabledTemplates}`);
+if (disabledTemplates !== 3) throw new Error(`Expected 3 disabled setup templates, found ${disabledTemplates}`);
 const manifest = JSON.parse(fs.readFileSync("module.json", "utf8"));
 if (manifest.version !== "0.11.0") throw new Error("Version unexpectedly changed: " + manifest.version);
 if (!manifest.packs?.some(pack => pack.name === "examples" && pack.type === "ActiveEffect" && pack.path === "packs/examples")) {
@@ -78,10 +100,20 @@ if (process.argv.includes("--verify")) {
   try {
     const keys = await db.keys().all();
     const effectKeys = keys.filter(key => key.startsWith("!effects!"));
-    if (effectKeys.length !== 39) throw new Error(`Expected 39 packed Active Effects, found ${effectKeys.length}`);
+    if (effectKeys.length !== 40) throw new Error(`Expected 40 packed Active Effects, found ${effectKeys.length}`);
     const packed = await db.getMany(effectKeys);
     if (packed.some(data => data?.type !== "base" || !Array.isArray(data.system?.changes))) {
       throw new Error("Packed Active Effect entry failed structure verification.");
+    }
+    const packedDirectActivity = packed.find(entry => entry.name === expectedDirectActivityTemplate.name);
+    if (!packedDirectActivity?.disabled) throw new Error("Packed direct Activity trigger template is missing or not disabled.");
+    const packedDirectChanges = new Map((packedDirectActivity.system?.changes ?? []).map(change => [change.key, change.value]));
+    for (const key of expectedDirectActivityTemplate.requiredKeys) {
+      if (!packedDirectChanges.has(key)) throw new Error("Packed direct Activity trigger template is missing change: " + key);
+    }
+    const packedDirectValue = String(packedDirectChanges.get(expectedDirectActivityTemplate.triggerKey) ?? "").trim();
+    if (!packedDirectValue || packedDirectValue.toLowerCase().startsWith("itemmacro")) {
+      throw new Error("Packed direct Activity template must not use the ItemMacro dispatcher.");
     }
     for (const [name, requiredKeys] of expectedToolExamples) {
       const effect = packed.find(entry => entry.name === name);
@@ -92,7 +124,7 @@ if (process.argv.includes("--verify")) {
       }
     }
     const packedDisabled = packed.filter(data => data.disabled).length;
-    if (packedDisabled !== 2) throw new Error(`Expected 2 disabled setup templates in pack, found ${packedDisabled}`);
+    if (packedDisabled !== 3) throw new Error(`Expected 3 disabled setup templates in pack, found ${packedDisabled}`);
     const packedDisplayOverrides = packed.flatMap(data => (data.system?.changes ?? [])
       .filter(change => change.key.endsWith(".displayBonusRolls"))
       .map(change => ({ name: data.name, value: String(change.value) })));
@@ -101,7 +133,7 @@ if (process.argv.includes("--verify")) {
         !packedDisplayOverrides.some(entry => entry.name === "Check — Private Oracle's Insight" && entry.value === "false")) {
       throw new Error("The packed Active Effects do not contain exactly the two intended displayBonusRolls examples.");
     }
-    console.log(`Verified native LevelDB pack: ${effectKeys.length} Active Effects, including both tool-check examples, ${packedDisabled} disabled templates, 2 explicit displayBonusRolls examples.`);
+    console.log(`Verified native LevelDB pack: ${effectKeys.length} Active Effects, including both tool-check examples and the direct Activity template, ${packedDisabled} disabled templates, 2 explicit displayBonusRolls examples.`);
   } finally {
     await db.close();
   }
