@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 — Route standalone save-card updates through GM
+
+- Route External Reaction's standalone saving-throw chat-card update through an active GM client when the workflow is running on a player client, avoiding player-side ChatMessage permission failures.
+- Preserve the existing roll calculation and card-rendering logic. GM-side requests are narrowly validated, and expected update failures are logged at debug level instead of producing noisy error stacks in player consoles.
+- This is a targeted fix for the External Reaction save-card error. Separate dfreds-notifications and Foundry notification errors are not changed by this patch.
+
 ## Unreleased — Restore direct Activity trigger documentation and examples
 
 - Clarify that a non-`ItemMacro` value in `flags.external-reaction.optional.NAME.activity.trigger` can resolve and launch an embedded D&D 5e Activity directly after its reaction is accepted.
