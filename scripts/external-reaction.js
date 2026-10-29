@@ -2470,6 +2470,45 @@ Hooks.once("ready", () => {
     });
     return result === true;
   });
+  // Update a standalone save card on a GM client. The handler is intentionally
+  // narrow: only an existing message that contains a save Roll tied to an item card
+  // may be modified, and only a player who owns the workflow's initiating Actor may
+  // request the update. This avoids granting a general ChatMessage-update endpoint.
+  socket.register("updateStandaloneSaveRollChatCard", async function (request = {}) {
+    const senderId = this?.socketdata?.userId;
+    try {
+      const requester = game.users.get(senderId);
+      if (game.user.isGM !== true || !game.user.active || !requester || requester.isGM
+          || requester.id !== request.requesterUserId) return false;
+      const message = game.messages?.get?.(request.messageId);
+      const updateData = request.updateData;
+      if (!message || !updateData || typeof updateData.content !== "string" || !Array.isArray(updateData.rolls)) return false;
+      const existingRolls = Array.isArray(message.rolls) ? message.rolls : [];
+      const rollOrigins = existingRolls.map(roll => roll?.options?.originatingMessage).filter(Boolean);
+      if (!rollOrigins.length) return false;
+      const messageActorId = message.speaker?.actor;
+      const messageActor = messageActorId ? game.actors?.get?.(messageActorId) : null;
+      if (!messageActor?.testUserPermission?.(requester, "OWNER")) return false;
+      if (updateData.rolls.length !== existingRolls.length) return false;
+      const validRollReplacement = updateData.rolls.every((roll, index) => {
+        if (!roll || typeof roll !== "object") return false;
+        const original = existingRolls[index];
+        const originalOrigin = original?.options?.originatingMessage;
+        if (originalOrigin && rollOrigins.includes(originalOrigin)) return true;
+        return roll?.formula === original?.formula && Number(roll?.total) === Number(original?.total);
+      });
+      if (!validRollReplacement) return false;
+      const safeUpdate = { content: updateData.content, rolls: updateData.rolls };
+      if (Array.isArray(updateData.whisper)) safeUpdate.whisper = updateData.whisper;
+      if (typeof updateData.blind === "boolean") safeUpdate.blind = updateData.blind;
+      await message.update(safeUpdate);
+      return true;
+    } catch (err) {
+      debug("GM-side standalone save-roll chat-card update failed.", { messageId: request.messageId, reason: err?.message ?? String(err) });
+      return false;
+    }
+  });
+
   socket.register("triggerExternalActivity", async ({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid, targetMode, destinationTokenUuid }) => {
     try {
       return await runExternalTriggeredActivity({ actorUuid, tokenUuid, trigger, suppressItemMacroUuid, targetMode, destinationTokenUuid });
@@ -3801,15 +3840,9 @@ async function updateSaveRollChatCard(workflow, target, originalRoll, finalRoll)
     const parsedRoll = new DOMParser().parseFromString(String(newHtml ?? ""), "text/html");
     const oldRollElement = parsedContent.body.querySelector(".dice-roll");
     const newRollElement = parsedRoll.body.querySelector(".dice-roll");
-    if (oldRollElement && newRollElement) {
-      oldRollElement.replaceWith(newRollElement);
-    } else if (oldRollElement) {
-      oldRollElement.innerHTML = parsedRoll.body.innerHTML;
-    } else {
-      // Basic D&D 5e save cards normally contain a .dice-roll element. This fallback
-      // keeps any card wrapper and replaces only its content if a theme changes markup.
-      parsedContent.body.innerHTML = String(newHtml ?? oldContent);
-    }
+    if (oldRollElement && newRollElement) oldRollElement.replaceWith(newRollElement);
+    else if (oldRollElement) oldRollElement.innerHTML = parsedRoll.body.innerHTML;
+    else parsedContent.body.innerHTML = String(newHtml ?? oldContent);
 
     const storedRolls = [...message.rolls];
     let rollIndex = storedRolls.findIndex(roll =>
@@ -3829,17 +3862,37 @@ async function updateSaveRollChatCard(workflow, target, originalRoll, finalRoll)
     });
     const updateData = { content: parsedContent.body.innerHTML, rolls: rollData };
     applyConfiguredModeToMessageData(updateData, finalRoll, game.users.get(finalRoll.options?.externalReactionRollModeUserId));
-    await message.update(updateData);
+
+    const socket = game.modules.get(MODULE_ID)?.api?.socket;
+    if (game.user.isGM) {
+      await message.update(updateData);
+    } else if (socket?.executeAsUser) {
+      const gm = game.users.find(user => user.active && user.isGM);
+      if (!gm) {
+        debug("Could not update the standalone save-roll chat card: no active GM client is available.", { messageId: message.id });
+        return false;
+      }
+      const updated = await socket.executeAsUser("updateStandaloneSaveRollChatCard", gm.id, {
+        requesterUserId: game.user.id, messageId: message.id, updateData
+      });
+      if (!updated) {
+        debug("The GM client did not update the standalone save-roll chat card.", { messageId: message.id });
+        return false;
+      }
+    } else {
+      debug("Could not update the standalone save-roll chat card: SocketLib GM routing is unavailable.", { messageId: message.id });
+      return false;
+    }
+
     debug("Updated the standalone save-roll chat card to match External Reaction's final Roll.", {
       messageId: message.id, oldTotal: originalRoll?.total, newTotal: finalRoll.total, formula: finalRoll.formula
     });
     return true;
   } catch (err) {
-    error("Could not update the standalone save-roll chat card.", err);
+    debug("Could not update the standalone save-roll chat card.", { messageId: message?.id, reason: err?.message ?? String(err) });
     return false;
   }
 }
-
 
 function checkRollTargetDC(roll, config = {}, dialog = {}, message = {}) {
   const candidates = [
