@@ -1,3 +1,13 @@
+## v0.11.1 — standalone save-card permission regression
+
+Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
+
+- [ ] Trigger an External Reaction save bonus from a player client and confirm the standalone save-roll card displays the final Roll and total.
+- [ ] Confirm the player console does not report `lacks permission to update ChatMessage` or the External Reaction save-card update stack trace.
+- [ ] Confirm a GM-triggered save bonus still updates the card directly.
+- [ ] Confirm a player who does not own the save message's speaker Actor cannot use the GM socket handler to update it.
+- [ ] Confirm unrelated chat messages and messages without originating save-roll metadata are rejected by the handler.
+
 ## v0.11.0 — release verification
 
 Run in a disposable Foundry V14 world with D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib. Keep these cases unchecked until each is verified in-world.
