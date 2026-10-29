@@ -70,8 +70,14 @@ jobs:
             fi
           fi
 
+          tag="v${version}"
+          tag_exists=false
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            tag_exists=true
+          fi
+
           create_release=false
-          if [[ "$EVENT_NAME" == "push" && "$version" != "$previous_version" ]]; then
+          if [[ "$EVENT_NAME" == "push" && ( "$version" != "$previous_version" || "$tag_exists" == "false" ) ]]; then
             create_release=true
           fi
 
@@ -79,6 +85,7 @@ jobs:
           echo "create_release=$create_release" >> "$GITHUB_OUTPUT"
           echo "Current version: $version"
           echo "Previous version: ${previous_version:-<none>}"
+          echo "Release tag exists: $tag_exists"
           echo "Create release: $create_release"
 
       - name: Build Foundry module ZIP
