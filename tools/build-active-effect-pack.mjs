@@ -85,7 +85,7 @@ if (displayOverrides.length !== expectedDisplayOverrides.size ||
 }
 if (disabledTemplates !== 3) throw new Error(`Expected 3 disabled setup templates, found ${disabledTemplates}`);
 const manifest = JSON.parse(fs.readFileSync("module.json", "utf8"));
-if (manifest.version !== "0.11.0") throw new Error("Version unexpectedly changed: " + manifest.version);
+if (manifest.version !== "0.11.1") throw new Error("Version unexpectedly changed: " + manifest.version);
 if (!manifest.packs?.some(pack => pack.name === "examples" && pack.type === "ActiveEffect" && pack.path === "packs/examples")) {
   throw new Error("module.json does not declare the ActiveEffect examples compendium.");
 }
