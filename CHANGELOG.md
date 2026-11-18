@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.4 — Use libWrapper for Actor check integrations
+
+- Register External Reaction's ability, skill, and tool check integrations through libWrapper when available, preserving compatibility with other wrappers such as Action HUD's `rollSkill` handler.
+- Retain the existing direct-wrapper fallback for installations without libWrapper; contested-roll behavior is unchanged.
+
 ## 0.11.3 — Avoid deprecated Midi-QoL token document access
 
 - Check TokenDocument inputs before accessing the legacy `.document` property in token normalization, avoiding Foundry's deprecation warning.
