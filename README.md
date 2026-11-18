@@ -53,11 +53,5 @@ The repository's GitHub Actions workflow validates the manifest and JavaScript, 
 ## Compatibility and testing
 
 The manifest declares Foundry V14 and D&D 5e 6.0.6 as minimum versions, and requires Midi-QoL 14.7.0 or later. External Reaction integrates with Midi-QoL workflow methods that may change between versions. Test upgrades and new Item Macro passes in a copy of your world before using them in a live campaign. The 0.10.8 reactor-client Counterspell flow has been tested in-world for player-owned and GM-owned reactors, automatic countering when the Counterspell slot level is high enough, and success/failure handling for the ability check when the spell is higher-level. Version 0.10.9 was also tested in-world for damage-triggered reactions, `skill.prof` / `skill.exp` activation conditions, and both explicit and picker-based Activity targeting.
-
-## v0.10.9 changes
-
-- Add the exact activation values `skill.prof` and `skill.exp` to filter optional reactions based on the original workflow target's proficiency or expertise in the skill being rolled.
-- Handle `activation = damage` for ItemMacro-backed options using Midi-QoL's per-target `midi-qol.isDamaged` event, checking positive HP or Temporary HP damage rather than the existence of a damage formula.
-- Support returned Activity references by UUID, explicit or compact Item/Activity paths, and unique partial names.
 - Add `actor`, `target`, and `self` suffixes for explicit Activity targets, while preserving the normal target selector when no suffix is supplied.
 - Prevent damage reactions for missed attacks and retain eligibility for non-attack damage workflows.
