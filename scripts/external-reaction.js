@@ -8,6 +8,7 @@ const FLAG_ROOT = `flags.${MODULE_ID}.optional`;
 const patchedWorkflows = new WeakSet();
 const patchedSaveWorkflows = new WeakSet();
 const processedExternalCheckRolls = new WeakSet();
+const integratedActorRollMethods = new Set();
 const patchedDamageWorkflows = new WeakSet();
 let externalToolCheckHookRegistered = false;
 const processedACWorkflows = new WeakSet();
@@ -4300,7 +4301,29 @@ function installAbilityCheckIntegration() {
       warn(`Could not find Actor.${methodName}; external ${rollKind} reactions may be unavailable.`);
       continue;
     }
-    if (original.__externalReactionWrapped) { installed = true; continue; }
+    if (integratedActorRollMethods.has(methodName) || original.__externalReactionWrapped) { installed = true; continue; }
+
+    if (globalThis.libWrapper?.register) {
+      try {
+        libWrapper.register(MODULE_ID, `CONFIG.Actor.documentClass.prototype.${methodName}`, async function (wrapped, ...args) {
+          const result = await wrapped(...args);
+          try {
+            return await processExternalAbilityCheck(this, args, result, rollKind);
+          } catch (err) {
+            error(`Unexpected error in external ${rollKind} wrapper.`, err);
+            return result;
+          }
+        }, "WRAPPER");
+        integratedActorRollMethods.add(methodName);
+        installed = true;
+        log(`Installed External Reaction ${rollKind} integration through libWrapper on ${methodName}`);
+      } catch (err) {
+        warn(`Could not register External Reaction ${rollKind} integration through libWrapper on ${methodName}; leaving the method unmodified.`, err);
+      }
+      continue;
+    }
+
+    // Keep compatibility with installations that do not provide libWrapper.
     const wrapped = async function (...args) {
       const result = await original.apply(this, args);
       try {
@@ -4313,6 +4336,7 @@ function installAbilityCheckIntegration() {
     Object.defineProperty(wrapped, "__externalReactionWrapped", { value: true });
     Object.defineProperty(wrapped, "__externalReactionOriginal", { value: original });
     prototype[methodName] = wrapped;
+    integratedActorRollMethods.add(methodName);
     installed = true;
     log(`Installed external ${rollKind} integration on ${methodName}`);
   }
