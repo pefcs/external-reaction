@@ -573,8 +573,8 @@ function parseDispositionValue(rawValue) {
 
 function normalizeToken(tokenLike) {
   if (!tokenLike) return null;
-  if (tokenLike.document && tokenLike.actor) return tokenLike;
   if (tokenLike.documentName === "Token") return tokenLike.object ?? tokenLike;
+  if (tokenLike.document && tokenLike.actor) return tokenLike;
   if (tokenLike.object?.document && tokenLike.object?.actor) return tokenLike.object;
   return tokenLike;
 }
