@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.3 — Avoid deprecated Midi-QoL token document access
+
+- Check TokenDocument inputs before accessing the legacy `.document` property in token normalization, avoiding Foundry's deprecation warning.
+
 ## 0.11.2 — Midi-QoL 14.7 and D&D 5e 6.1 compatibility metadata
 
 - Require Midi-QoL 14.7.0 or later, the release line for D&D 5e 6.1.x, so incompatible Midi-QoL 14.6.x installs are not accepted.
