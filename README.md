@@ -1,9 +1,9 @@
 # External Reaction
 
-External Reaction extends Midi-QoL-style optional reactions so eligible creatures on the active scene can react to another creature's attacks, saving throws, ability checks, skill checks, damage rolls, and incoming attacks. A reaction can launch a fixed embedded D&D 5e Activity directly through `activity.trigger`, or use an Item Macro that returns an Activity reference or structured result when conditional logic or dynamic choice is needed.
+Adds scene-wide third-party reactions, activation-event conditions, reactor-client Item Macro execution, resource receipts, and configurable roll bonuses for D&D 5e.
 
-**Current version: 0.11.0**  
-**Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.6.4+, and socketlib.
+**Current version: 0.11.2**  
+**Target environment:** Foundry VTT V14, D&D 5e 6.0.6+, Midi-QoL 14.7.0+, and socketlib.
 
 ## Highlights (stable v0.10.0–v0.11.0)
 
@@ -52,7 +52,7 @@ The repository's GitHub Actions workflow validates the manifest and JavaScript, 
 
 ## Compatibility and testing
 
-The manifest declares Foundry V14 and D&D 5e 6.0.6 as minimum versions. External Reaction integrates with Midi-QoL workflow methods that may change between versions. Test upgrades and new Item Macro passes in a copy of your world before using them in a live campaign. The 0.10.8 reactor-client Counterspell flow has been tested in-world for player-owned and GM-owned reactors, automatic countering when the Counterspell slot level is high enough, and success/failure handling for the ability check when the spell is higher-level. Version 0.10.9 was also tested in-world for damage-triggered reactions, `skill.prof` / `skill.exp` activation conditions, and both explicit and picker-based Activity targeting.
+The manifest declares Foundry V14 and D&D 5e 6.0.6 as minimum versions, and requires Midi-QoL 14.7.0 or later. External Reaction integrates with Midi-QoL workflow methods that may change between versions. Test upgrades and new Item Macro passes in a copy of your world before using them in a live campaign. The 0.10.8 reactor-client Counterspell flow has been tested in-world for player-owned and GM-owned reactors, automatic countering when the Counterspell slot level is high enough, and success/failure handling for the ability check when the spell is higher-level. Version 0.10.9 was also tested in-world for damage-triggered reactions, `skill.prof` / `skill.exp` activation conditions, and both explicit and picker-based Activity targeting.
 
 ## v0.10.9 changes
 
